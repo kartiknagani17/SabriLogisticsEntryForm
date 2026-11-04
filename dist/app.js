@@ -196,15 +196,48 @@ async function loadLRs() {
 }
 function setTab(t) {
   tab = t;
-  [['entries', 'Entries', 'paneEntries'], ['lr', 'LR', 'paneLR'], ['in', 'In', 'paneIn'], ['slip', 'Slip', 'paneSlip']].forEach(([k, n, pane]) => { $('#tab' + n).classList.toggle('active', t === k); $('#' + pane).classList.toggle('hidden', t !== k); });
-  $('#dashHint').textContent = { entries: 'All GC entries saved so far. Click a row to view it.', lr: 'All lorry receipts created so far, one row each.', in: 'GCs received at this office. Pay type can be changed per row.', slip: 'Delivery slips created so far.' }[t];
+  [['entries', 'Entries', 'paneEntries'], ['lr', 'LR', 'paneLR'], ['in', 'In', 'paneIn'], ['slip', 'Slip', 'paneSlip'], ['acc', 'Acc', 'paneAcc']].forEach(([k, n, pane]) => { $('#tab' + n).classList.toggle('active', t === k); $('#' + pane).classList.toggle('hidden', t !== k); });
+  $('#dashHint').textContent = { entries: 'All GC entries saved so far. Click a row to view it.', lr: 'All lorry receipts created so far, one row each.', in: 'GCs received at this office. Pay type can be changed per row.', slip: 'Delivery slips created so far.', acc: 'Money totals for the selected branch (or all branches). Narrow it with dates if you like.' }[t];
 }
-async function loadDash() { try { await { entries: loadEntries, lr: loadLRs, in: loadInward, slip: loadSlips }[tab](); } catch (err) { showToast(err.message, true); } }
+async function loadDash() { try { await { entries: loadEntries, lr: loadLRs, in: loadInward, slip: loadSlips, acc: loadAcc }[tab](); } catch (err) { showToast(err.message, true); } }
 $('#navDash').addEventListener('click', () => { show('dash'); $('#mode').textContent = scopeLabel(); loadDash(); });
 $('#tabEntries').addEventListener('click', () => { setTab('entries'); loadDash(); });
 $('#tabLR').addEventListener('click', () => { setTab('lr'); loadDash(); warm(); });
 $('#tabIn').addEventListener('click', () => { setTab('in'); loadDash(); });
 $('#tabSlip').addEventListener('click', () => { setTab('slip'); loadDash(); });
+$('#tabAcc').addEventListener('click', () => { setTab('acc'); loadDash(); });
+
+// ---- ACCOUNTING: totals for the branch in view (admin: all branches or the one picked; employee: own branch) ----
+let accData = { e: [], s: [], w: [] };
+async function loadAcc() {
+  const [e, s, w] = await Promise.all([store.list(), slipStore.list(), inwardStore.list()]);
+  entries = e; accData = { e, s, w }; renderAcc();
+}
+function renderAcc() {
+  const from = $('#accFrom').value, to = $('#accTo').value, n = v => parseFloat(v) || 0, rs = v => '\u20B9 ' + fmt(v);
+  const inR = d => (!from || (d && d >= from)) && (!to || (d && d <= to));
+  const E = accData.e.filter(e => inR(e.entry_date)), S = accData.s.filter(s => inR(s.slip_date)), W = accData.w.filter(w => inR(String(w.created_at).slice(0, 10)));
+  const sumE = list => {
+    const t = { count: list.length, total: 0, freight: 0, bc: 0, door: 0, handling: 0, other: 0, tax: 0, pay: { 'Paid': 0, 'To Pay': 0, 'To be Billed': 0 } };
+    list.forEach(e => { const d = e.data || {}; t.total += n(e.total); t.freight += n(d.freight); t.bc += n(d.bc); t.door += n(d.doorDelivery); t.handling += n(d.handling); t.other += n(d.other); t.tax += n(d.sgst) + n(d.cgst); if (d.payType in t.pay) t.pay[d.payType] += n(e.total); });
+    return t;
+  };
+  const t = sumE(E), slipTotal = S.reduce((a, s) => a + n(s.total), 0), grand = t.total + slipTotal;
+  const byGc = new Map(accData.e.map(e => [e.branch_id + '|' + e.gc_no, e])), recvValue = W.reduce((a, w) => a + n((byGc.get(w.branch_id + '|' + w.gc_no) || {}).total), 0);
+  $('#accScope').textContent = scopeLabel() + (from || to ? ' \u00B7 ' + (from || '\u2026') + ' to ' + (to || '\u2026') : '');
+  const card = (l, v, big) => `<div class="acc-card ${big ? 'big' : ''}"><small>${l}</small><b>${v}</b></div>`;
+  const row = (l, v) => `<tr><td>${l}</td><td class="num">${rs(v)}</td></tr>`;
+  let html = `<div class="acc-cards">${card('Grand total', rs(grand), true)}${card('GC charges total', rs(t.total))}${card('Delivery slip charges', rs(slipTotal))}${card('GC entries', t.count)}${card('Delivery slips', S.length)}${card('GCs received', W.length + ' \u00B7 ' + rs(recvValue))}</div>
+    <div class="acc-grid"><div class="card dash" style="padding:18px"><h3>By pay type</h3><table><tbody>${Object.entries(t.pay).map(([k, v]) => row(esc(k), v)).join('')}<tr class="tot"><td>Total</td><td class="num">${rs(t.total)}</td></tr></tbody></table></div>
+    <div class="card dash" style="padding:18px"><h3>GC charges breakdown</h3><table><tbody>${row('Freight', t.freight)}${row('BC', t.bc)}${row('Door delivery', t.door)}${row('Handling', t.handling)}${row('Other', t.other)}${row('SGST + CGST', t.tax)}<tr class="tot"><td>Total</td><td class="num">${rs(t.total)}</td></tr></tbody></table></div></div>`;
+  if (isAdmin() && !scopeBranch) {
+    const ids = [...new Set([...branches.map(b => b.id), ...E.map(e => e.branch_id), ...S.map(s => s.branch_id)])];
+    html += `<h3 class="acc-h">By branch</h3><div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th>Branch</th><th class="num">GCs</th><th class="num">GC charges</th><th class="num">Slips</th><th class="num">Slip charges</th><th class="num">Total</th></tr></thead><tbody>${ids.map(id => { const bt = sumE(E.filter(e => e.branch_id === id)), bs = S.filter(s => s.branch_id === id), st = bs.reduce((a, s) => a + n(s.total), 0); return `<tr><td><b>${esc(bname(id))}</b></td><td class="num">${bt.count}</td><td class="num">${fmt(bt.total)}</td><td class="num">${bs.length}</td><td class="num">${fmt(st)}</td><td class="num"><b>${fmt(bt.total + st)}</b></td></tr>`; }).join('')}<tr class="tot"><td>All branches</td><td class="num">${t.count}</td><td class="num">${fmt(t.total)}</td><td class="num">${S.length}</td><td class="num">${fmt(slipTotal)}</td><td class="num">${fmt(grand)}</td></tr></tbody></table></div>`;
+  }
+  $('#accBody').innerHTML = html;
+}
+$('#accFrom').addEventListener('change', renderAcc); $('#accTo').addEventListener('change', renderAcc);
+$('#accClear').addEventListener('click', () => { $('#accFrom').value = ''; $('#accTo').value = ''; renderAcc(); });
 $('#rows').addEventListener('click', async e => {
   const tr = e.target.closest('tr.row'); if (!tr) return; const row = viewList[tr.dataset.i], a = e.target.dataset.a;
   if (a === 'pdf') return receiptPDF(rd(row.data), `GC-${row.gc_no}.pdf`);
