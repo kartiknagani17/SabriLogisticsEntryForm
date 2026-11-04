@@ -80,6 +80,9 @@ end $$;
 
 -- uniqueness now applies inside one branch only
 drop index if exists public.entries_unique_data;
+-- exact duplicate entries (same branch, identical apart from print time) are removed, keeping the oldest of each
+delete from public.entries a using public.entries b
+ where a.branch_id = b.branch_id and (a.data - 'printedAt') = (b.data - 'printedAt') and a.id > b.id;
 create unique index if not exists entries_unique_data on public.entries (branch_id, (data - 'printedAt'));
 alter table public.inwards drop constraint if exists inwards_gc_no_key;
 create unique index if not exists inwards_branch_gc_uq on public.inwards (branch_id, gc_no);
