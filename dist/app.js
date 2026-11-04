@@ -171,7 +171,6 @@ $('#newEntryBtn').addEventListener('click', () => { newEntry(); showToast('Start
 function show(v) {
   $('#viewNew').classList.toggle('hidden', v !== 'new'); $('#viewDash').classList.toggle('hidden', v !== 'dash'); $('#viewBranches').classList.toggle('hidden', v !== 'branches');
   $('#navNew').classList.toggle('active', v === 'new'); $('#navDash').classList.toggle('active', v === 'dash'); $('#navBranches').classList.toggle('active', v === 'branches');
-  $('#scopeSel').closest('.scope').classList.toggle('hidden', !isAdmin() || v === 'branches');
 }
 $('#navNew').addEventListener('click', () => show('new'));
 let entries = [], lrs = [], inwards = [], slips = [], tab = 'entries';
@@ -454,7 +453,8 @@ async function loadBranches() {
 }
 function fillScope() {
   if (!isAdmin()) return;
-  $('#scopeSel').innerHTML = '<option value="">All branches</option>' + branches.filter(b => b.active || b.id === scopeBranch).map(b => `<option value="${b.id}" ${b.id === scopeBranch ? 'selected' : ''}>${esc(b.name)}</option>`).join('');
+  const opts = '<option value="">All branches</option>' + branches.filter(b => b.active || b.id === scopeBranch).map(b => `<option value="${b.id}" ${b.id === scopeBranch ? 'selected' : ''}>${esc(b.name)}</option>`).join('');
+  document.querySelectorAll('.scopeSel').forEach(s => { s.innerHTML = opts; });
 }
 function updateEntryHint() {
   const b = curBranch();
@@ -464,7 +464,7 @@ function setScope(id) {
   scopeBranch = id || null; fillScope(); warmP = null; updateEntryHint(); $('#mode').textContent = scopeLabel();
   if (!$('#viewDash').classList.contains('hidden')) loadDash();
 }
-$('#scopeSel').addEventListener('change', e => setScope(+e.target.value));
+document.querySelectorAll('.scopeSel').forEach(s => s.addEventListener('change', e => setScope(+e.target.value)));
 async function enterApp() {
   $('#loginView').classList.add('hidden'); $('#appRoot').classList.remove('hidden');
   document.body.classList.toggle('emp', !isAdmin());

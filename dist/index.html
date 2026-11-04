@@ -101,6 +101,7 @@
     .whoami{color:#fff;font-size:13px;line-height:1.5;margin-bottom:10px}.whoami small{color:#a9c1dc;display:block}.logout{width:100%;padding:9px 12px;font-size:13px;background:transparent;color:#c2d3e6;border:1px solid #3d6595}.logout:hover{background:#c62828;border-color:#c62828;color:#fff}
     .scope{display:grid;gap:6px}.scope label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#a9c1dc}.scope select{background:#fff;padding:9px 10px}
     .emp .adm{display:none!important}
+    body:not(.emp) #mode{display:none}.scopeSel{width:auto;min-width:200px;background:#fff;font-weight:700;color:var(--navy)}
     .rail-footer{margin-top:auto}
     .chip-st{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:800}.chip-st.ok{background:#e9f7ef;color:#177245}.chip-st.off{background:#fdeceb;color:#b3261e}.chip-st.wait{background:#fff4ea;color:#8a3d00}
     .br-meta{color:var(--muted);margin:6px 0 0}.br-actions{display:flex;gap:8px;flex-wrap:wrap}.br-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:20px}.br-head h2{margin:0 0 4px;font-size:26px}
@@ -113,13 +114,12 @@
       <div class="brand"><div class="brand-mark">SL</div><strong>SABRI<br>LOGISTICS</strong></div>
       <div><div class="eyebrow">Consignment desk</div><h1>New goods<br>receipt</h1></div>
       <p>Fill in the details on one page, then press Finish entry to save and get the receipt.</p>
-      <div class="scope adm"><label for="scopeSel">Branch</label><select id="scopeSel"></select></div>
       <div class="nav"><button type="button" class="navbtn" id="navDash">Dashboard</button><button type="button" class="navbtn active" id="navNew">New entry</button><button type="button" class="navbtn adm" id="navBranches">Branches</button></div>
       <div class="rail-footer"><div class="whoami" id="whoami"></div><button type="button" class="logout" id="logoutBtn">Log out</button></div>
     </aside>
     <main class="main">
       <div id="viewNew">
-        <div class="topbar"><div><div class="title-row"><h2 id="heading">Consignment entry</h2><button type="button" class="btn-primary newbtn" id="newEntryBtn">Create New Entry</button></div><p id="entryHint">Create a clean, print-ready GC receipt in under a minute.</p></div><div class="badge">Draft</div></div>
+        <div class="topbar"><div><div class="title-row"><h2 id="heading">Consignment entry</h2><button type="button" class="btn-primary newbtn" id="newEntryBtn">Create New Entry</button></div><p id="entryHint">Create a clean, print-ready GC receipt in under a minute.</p></div><div class="badge">Draft</div><select class="scopeSel adm" aria-label="Branch"></select></div>
         <section class="card form-card">
           <form id="entryForm">
             <div id="fields"></div>
@@ -128,7 +128,7 @@
         </section>
       </div>
       <section id="viewDash" class="hidden">
-        <div class="topbar"><div><div class="title-row"><h2>Dashboard</h2><div class="tabs"><button type="button" class="tab active" id="tabEntries">GC ENTRY</button><button type="button" class="tab" id="tabLR">REPORT</button><button type="button" class="tab" id="tabIn">INWARD</button><button type="button" class="tab" id="tabSlip">DELIVERY SLIP</button></div></div><p id="dashHint">All GC entries saved so far. Click a row to view it.</p></div><div class="badge" id="mode"></div></div>
+        <div class="topbar"><div><div class="title-row"><h2>Dashboard</h2><div class="tabs"><button type="button" class="tab active" id="tabEntries">GC ENTRY</button><button type="button" class="tab" id="tabLR">REPORT</button><button type="button" class="tab" id="tabIn">INWARD</button><button type="button" class="tab" id="tabSlip">DELIVERY SLIP</button></div></div><p id="dashHint">All GC entries saved so far. Click a row to view it.</p></div><div class="badge" id="mode"></div><select class="scopeSel adm" aria-label="Branch"></select></div>
         <div id="paneEntries"><div class="toolbar"><input type="search" id="gcSearch" placeholder="Search by GC number" autocomplete="off"><select id="gcSort" aria-label="Sort by"><option value="">Sort: newest saved</option><option value="gcAsc">GC number: low to high</option><option value="gcDesc">GC number: high to low</option><option value="dateDesc">Date: newest first</option><option value="dateAsc">Date: oldest first</option></select><select id="gcPay" aria-label="Filter by pay type"><option value="">All pay types</option><option>Paid</option><option>To Pay</option><option>To be Billed</option></select><span class="gccount" id="gcCount"></span></div><div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>GC No</th><th>Date</th><th>From</th><th>To</th><th>Consignor</th><th>Consignee</th><th>Pay Type</th><th>Total</th><th>Saved</th><th></th></tr></thead><tbody id="rows"></tbody></table></div></div>
         <div id="paneLR" class="hidden"><div class="lr-top"><button type="button" class="btn-primary" id="newLRBtn">Create New LR</button></div>
           <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>Memo No</th><th>Date</th><th>From</th><th>To</th><th>Total GCs</th><th>Truck</th><th>Saved</th><th></th></tr></thead><tbody id="lrRows"></tbody></table></div></div>
