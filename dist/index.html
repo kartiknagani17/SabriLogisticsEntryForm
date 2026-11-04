@@ -4,6 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Sabri Logistics · Consignment Entry</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="config.js"></script><script src="receipt-template.js"></script><script src="receipt.js"></script><script src="lr.js"></script>
   <style>
     :root{--navy:#0c3b6f;--ink:#10253e;--muted:#718096;--line:#d9e2ec;--orange:#f47b20;--soft:#f5f8fb;--white:#fff;}
     *{box-sizing:border-box} body{margin:0;background:#eef3f8;color:var(--ink);font:15px Inter,Segoe UI,Arial,sans-serif}
@@ -11,62 +13,145 @@
     @media(max-width:1020px){.app{grid-template-columns:1fr}.rail{padding:18px 22px}.rail h1{font-size:25px}.progress{grid-template-columns:repeat(3,1fr)}.rail-footer{display:none}.main{padding:22px}.workspace{grid-template-columns:1fr}.review{position:static}}
     @media(max-width:650px){.fields{grid-template-columns:1fr}.field.full{grid-column:auto}.main{padding:16px}.progress{grid-template-columns:1fr}.topbar{align-items:flex-start;gap:12px;flex-direction:column}.review{padding:12px}.actions{gap:10px}.actions button{padding:11px 13px}}
     @media print{body{background:#fff}.rail,.topbar,.form-card,.review-top,.review-actions{display:none!important}.app,.main,.workspace{display:block;padding:0}.review{display:block;box-shadow:none;border:0;padding:0}.mini-note{width:100%;font-size:12px}.mini-head .title{font-size:28px}.mini-head small{font-size:11px}.mini-meta div{min-height:34px}.mini-row{min-height:34px}.mini-row b,.mini-meta b,.mini-table th{font-size:11px}}
+
+    .nav{display:grid;gap:8px}.navbtn{background:transparent;color:#c2d3e6;border:1px solid #3d6595;text-align:left}.navbtn.active{background:var(--orange);border-color:var(--orange);color:#fff}
+    .preview-svg svg{width:100%;height:auto;border:1px solid var(--line);border-radius:4px;background:#fff;display:block}.total-row{display:flex;justify-content:space-between;background:var(--soft);border-radius:10px;padding:11px 14px;margin:0 0 12px;font-weight:800}
+    .mini{transition:.15s}.mini:hover{background:var(--orange);color:#fff}.title-row{display:flex;align-items:center;gap:16px}.newbtn{padding:9px 16px;font-size:13px}
+    @media(min-width:1021px){.main{max-width:1500px}.workspace{grid-template-columns:minmax(640px,1.2fr) minmax(420px,.8fr)}}
+    .tabs{display:flex;gap:6px}.tab{background:#fff;color:var(--navy);border:1px solid var(--line);padding:8px 18px}.tab:hover{background:#edf3f8}.tab.active{background:var(--navy);color:#fff;border-color:var(--navy)}.lr-top{display:flex;justify-content:flex-end;margin-bottom:14px}
+    .modal{position:fixed;inset:0;background:rgba(16,37,62,.55);display:flex;align-items:flex-start;justify-content:center;padding:36px 16px;overflow:auto;z-index:50}.modal-box{background:#fff;border-radius:18px;padding:24px;width:100%;max-width:680px;box-shadow:0 20px 60px rgba(0,0,0,.3)}.modal-box.wide{max-width:760px}.modal-box h3{margin:0 0 4px;font-size:21px}.modal-box .sub{color:var(--muted);margin:0 0 18px}
+    .picker{position:relative}.dd{position:absolute;left:0;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(21,52,80,.15);max-height:240px;overflow:auto;z-index:5}.dd div{padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;gap:12px;font-size:14px}.dd div:hover{background:#fff4ea}.dd small{color:var(--muted)}.dd .none{color:var(--muted);cursor:default}.dd .none:hover{background:none}
+    .chips{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 16px}.chip{background:#fff4ea;border:1px solid #f9c79d;color:#8a3d00;border-radius:999px;padding:6px 8px 6px 12px;font-size:13px;font-weight:700;display:flex;gap:8px;align-items:center}.chip button{padding:0 6px;background:none;color:#8a3d00;font-size:16px;line-height:1}
+    .modal .fields{gap:14px}.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}.modal-box svg{width:100%;height:auto;border:1px solid var(--line);border-radius:4px;display:block}
+    .hidden{display:none!important}.dash table{width:100%;border-collapse:collapse;font-size:14px}.dash th,.dash td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line);white-space:nowrap}.dash th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.dash tr.row{cursor:pointer}.dash tr.row:hover{background:var(--soft)}.mini{padding:6px 12px;font-size:12px}.review-actions{flex-wrap:wrap}
     .print-sheet{display:none}
     @media print{@page{size:A4 portrait;margin:7mm}body{background:#fff}.rail,.topbar,.form-card,.review-top,.review-actions,.preview-note{display:none!important}.app,.main,.workspace{display:block;padding:0}.review{display:block;box-shadow:none;border:0;padding:0}.print-sheet{display:grid;grid-template-rows:repeat(3,1fr);gap:5mm}.print-sheet .mini-note{display:block;width:100%;font-size:8px}.print-sheet .mini-head{padding:5px}.print-sheet .mini-head .title{font-size:17px}.print-sheet .mini-head small{font-size:6px}.print-sheet .mini-meta div,.print-sheet .mini-row{min-height:18px}.print-sheet .mini-row b,.print-sheet .mini-meta b,.print-sheet .mini-table th{font-size:7px}.print-sheet .mini-table td,.print-sheet .mini-table th{padding:2px;height:15px}.print-sheet .mini-bottom{min-height:26px}.print-sheet .mini-bottom div{padding:3px}}
-  </style>
+  /*EXTRA*/
+    .main{max-width:1560px}
+    .form-card{padding:20px 24px}
+    .sect{margin-bottom:20px}.sect:last-of-type{margin-bottom:6px}
+    .sect h4{margin:0 0 10px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--orange)}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:11px 14px}
+    .grid .field.w2{grid-column:span 2}
+    .field{gap:5px}.field label{font-size:12px}
+    input,select{padding:9px 11px;font-size:13.5px;border-radius:8px;width:100%}
+    select{appearance:auto}
+    .actions{margin-top:18px;padding-top:16px;gap:16px}
+    .totalbox{background:var(--soft);border-radius:10px;padding:10px 16px;font-weight:700;color:var(--muted)}.totalbox b{color:var(--ink);margin-left:8px;font-size:16px}
+    .nav{display:grid;gap:8px}.navbtn{background:transparent;color:#c2d3e6;border:1px solid #3d6595;text-align:left}.navbtn.active{background:var(--orange);border-color:var(--orange);color:#fff}
+    .title-row{display:flex;align-items:center;gap:16px}.newbtn{padding:9px 16px;font-size:13px}
+    .tabs{display:flex;gap:6px}.tab{background:#fff;color:var(--navy);border:1px solid var(--line);padding:8px 18px;letter-spacing:.04em}.tab:hover{background:#edf3f8}.tab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+    .lr-top{display:flex;justify-content:flex-end;margin-bottom:14px}
+    .dash table{width:100%;border-collapse:collapse;font-size:14px}.dash th,.dash td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line);white-space:nowrap}.dash th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.dash tr.row{cursor:pointer}.dash tr.row:hover{background:var(--soft)}
+    .mini{padding:6px 12px;font-size:12px;transition:.15s}.mini:hover{background:var(--orange);color:#fff}
+    .modal{position:fixed;inset:0;background:rgba(16,37,62,.55);display:flex;align-items:flex-start;justify-content:center;padding:28px 16px;overflow:auto;z-index:50}
+    .modal-box{background:#fff;border-radius:18px;padding:22px 24px;width:100%;max-width:680px;box-shadow:0 20px 60px rgba(0,0,0,.3)}.modal-box.wide{max-width:820px}
+    .modal-box h3{margin:0 0 4px;font-size:21px}.modal-box .sub{color:var(--muted);margin:0 0 16px}
+    .modal-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;position:sticky;top:-22px;background:#fff;padding:2px 0 12px;margin:-2px 0 4px;z-index:2}
+    .modal-btns{display:flex;gap:8px;flex-wrap:wrap}.modal-btns button{padding:10px 18px}
+    .pages svg{width:100%;height:auto;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:14px}
+    .modal .fields{gap:14px;grid-template-columns:repeat(2,1fr)}.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+    .picker{position:relative}.dd{position:static;box-shadow:none;margin-top:6px;background:#fff;border:1px solid var(--line);border-radius:10px;max-height:220px;overflow:auto}
+    .dd div{padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;gap:12px;font-size:14px}.dd div:hover{background:#fff4ea}.dd small{color:var(--muted)}.dd .none{color:var(--muted);cursor:default}.dd .none:hover{background:none}.dd .addall{font-weight:800;color:var(--orange);border-bottom:1px solid var(--line)}
+    .selcount{margin:10px 0 0;font-size:13px;color:var(--muted)}.selcount a{color:var(--orange)}
+    .chips{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 8px;max-height:130px;overflow-y:auto}.chips:empty{display:none}.chip{background:#fff4ea;border:1px solid #f9c79d;color:#8a3d00;border-radius:999px;padding:6px 8px 6px 12px;font-size:13px;font-weight:700;display:flex;gap:8px;align-items:center}.chip.more{padding:6px 12px;background:#f5f8fb;border-color:var(--line);color:var(--muted)}.chip button{padding:0 6px;background:none;color:#8a3d00;font-size:16px;line-height:1}
+    .btn-primary{transition:.15s}.btn-primary:active{transform:scale(.97)}.btn-primary.working{background:#2c9a67;cursor:progress}
+    .donebtns{display:flex;gap:10px}.donebtns button{padding:12px 20px}
+    .pk-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}.pk-bar input[type=text]{flex:1;min-width:240px}.pk-only{display:flex;gap:6px;align-items:center;font-size:13px;font-weight:700;margin-left:auto;cursor:pointer}.pk-only input{width:auto}
+    .pk-list{border:1px solid var(--line);border-radius:10px;max-height:min(46vh,480px);overflow:auto;background:#fff}
+    .pk-row{display:grid;grid-template-columns:26px 92px 1.1fr 1.2fr 1.2fr 84px;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);font-size:13px;cursor:pointer;user-select:none}.pk-row:hover{background:#fff4ea}.pk-row.on{background:#ffe9d2}
+    .pk-row input{width:auto;margin:0;pointer-events:none}.pk-row .g{font-weight:800}.pk-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pk-row .d{color:var(--muted)}
+    .pk-head{position:sticky;top:0;background:#f5f8fb;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:default;z-index:1}.pk-head:hover{background:#f5f8fb}
+    .pk-note{padding:16px;color:var(--muted);text-align:center;font-size:13px}.pk-status{margin:10px 0 14px;font-weight:800}
+    .modal-actions.sticky{position:sticky;bottom:-22px;background:#fff;padding:12px 0 2px;border-top:1px solid var(--line);align-items:center}.pk-count{margin-right:auto;font-weight:800;color:var(--orange)}
+    .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}.toolbar input{width:260px}.toolbar select{width:auto;min-width:170px;background:#fff}.gccount{margin-left:auto;color:var(--muted);font-size:13px;font-weight:700}
+    /* hover = a different colour per button kind; pressed = green (kept ~0.7s after a click via .pressed) */
+    button{transition:background-color .18s,color .18s,border-color .18s,box-shadow .18s,transform .12s,filter .18s}
+    .btn-primary:hover{background:#1d63d8;color:#fff;filter:none;box-shadow:0 6px 16px rgba(29,99,216,.4);transform:translateY(-1px)}
+    .btn-primary:active,.btn-primary.pressed{background:#15803d;color:#fff;filter:none;box-shadow:none;transform:scale(.97)}
+    .btn-secondary:not(.mini):hover{background:#0e9f8e;color:#fff;box-shadow:0 5px 14px rgba(14,159,142,.35)}
+    .btn-secondary:not(.mini):active,.btn-secondary:not(.mini).pressed{background:#15803d;color:#fff;box-shadow:none;transform:scale(.97)}
+    .btn-ghost:hover{background:#fcd34d;color:#3b2a00}
+    .btn-ghost:active,.btn-ghost.pressed{background:#15803d;color:#fff;transform:scale(.97)}
+    .navbtn:hover{background:#0e9f8e;border-color:#0e9f8e;color:#fff}
+    .navbtn:active,.navbtn.pressed{background:#15803d;border-color:#15803d;color:#fff;transform:scale(.98)}
+    .navbtn.active:hover{background:#1d63d8;border-color:#1d63d8;color:#fff;filter:none}
+    .tab:hover{background:#0e9f8e;border-color:#0e9f8e;color:#fff}
+    .tab:active,.tab.pressed{background:#15803d;border-color:#15803d;color:#fff;transform:scale(.97)}
+    .tab.active:hover{background:#7c3aed;border-color:#7c3aed;color:#fff}
+    .mini:hover{background:#7c3aed;color:#fff}
+    .mini:active,.mini.pressed{background:#15803d;color:#fff;transform:scale(.95)}
+    .chip button:hover{color:#c62828}
+    .pk-row:active{background:#ffd7b0}.dash tr.row:active{background:#e1ecf6}
+    .btn-primary.working,.btn-primary.working:hover{background:#2c9a67;box-shadow:none;transform:none}
+    button:disabled:hover{filter:none;box-shadow:none;transform:none}
+    /* left menu stays put while the page scrolls */
+    .rail{position:sticky;top:0;height:100vh;align-self:start;overflow-y:auto}
+    @media(max-width:1020px){.rail{position:static;height:auto;overflow:visible}}
+    .hidden{display:none!important}
+    @media(max-width:1180px){.grid{grid-template-columns:repeat(2,1fr)}}
+    @media(max-width:650px){.grid{grid-template-columns:1fr}.grid .field.w2{grid-column:auto}.modal .fields{grid-template-columns:1fr}}
+    .pay-sel{width:auto;min-width:130px;background:#fff}.save-pay{padding:6px 12px;font-size:12px;margin-left:6px}.rcv{color:#177245;font-weight:800}
+    .slip-table{width:100%;border-collapse:collapse;font-size:14px;margin-top:12px}.slip-table th,.slip-table td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}.slip-table th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.slip-table input{width:110px}.slip-table .x{padding:2px 9px;background:none;color:#c62828;font-size:18px}
+    /* login + branches */
+    .login{position:fixed;inset:0;background:linear-gradient(135deg,#0c3b6f,#16508f);display:grid;place-items:center;padding:20px;z-index:100;overflow:auto}
+    .login-card{background:#fff;border-radius:18px;padding:30px 28px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.35);display:grid;gap:14px}
+    .login-card .brand{color:var(--navy)}.login-card .brand-mark{border-color:var(--navy)}.login-card h2{margin:0;font-size:24px}.login-card .sub{margin:0;color:var(--muted)}
+    .lg-err{color:#b3261e;font-weight:700;font-size:13px;min-height:0}.lg-err:empty{display:none}
+    .whoami{color:#fff;font-size:13px;line-height:1.5;margin-bottom:10px}.whoami small{color:#a9c1dc;display:block}.logout{width:100%;padding:9px 12px;font-size:13px;background:transparent;color:#c2d3e6;border:1px solid #3d6595}.logout:hover{background:#c62828;border-color:#c62828;color:#fff}
+    .scope{display:grid;gap:6px}.scope label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#a9c1dc}.scope select{background:#fff;padding:9px 10px}
+    .emp .adm{display:none!important}
+    .rail-footer{margin-top:auto}
+    .chip-st{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:800}.chip-st.ok{background:#e9f7ef;color:#177245}.chip-st.off{background:#fdeceb;color:#b3261e}.chip-st.wait{background:#fff4ea;color:#8a3d00}
+    .br-meta{color:var(--muted);margin:6px 0 0}.br-actions{display:flex;gap:8px;flex-wrap:wrap}.br-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:20px}.br-head h2{margin:0 0 4px;font-size:26px}
+    .br-sec{display:flex;justify-content:space-between;align-items:center;margin:22px 0 12px}.br-sec h3{margin:0;font-size:18px}.dash td .mini{margin-right:4px}
+</style>
 </head>
 <body>
-  <div class="app">
+  <div class="app hidden" id="appRoot">
     <aside class="rail">
       <div class="brand"><div class="brand-mark">SL</div><strong>SABRI<br>LOGISTICS</strong></div>
       <div><div class="eyebrow">Consignment desk</div><h1>New goods<br>receipt</h1></div>
-      <p>Enter each detail once. Press Enter or Next to move through the form without losing your place.</p>
-      <div class="progress">
-        <div class="step active" data-step="0"><span class="num">01</span><span>Shipment details</span></div>
-        <div class="step" data-step="1"><span class="num">02</span><span>Cargo details</span></div>
-        <div class="step" data-step="2"><span class="num">03</span><span>Weight & charges</span></div>
-      </div>
-      <div class="rail-footer">H.O. · 1-2, Balaji Complex<br>Morbi, Gujarat · 363642<br><br>Private desktop workspace</div>
+      <p>Fill in the details on one page, then press Finish entry to save and get the receipt.</p>
+      <div class="scope adm"><label for="scopeSel">Branch</label><select id="scopeSel"></select></div>
+      <div class="nav"><button type="button" class="navbtn" id="navDash">Dashboard</button><button type="button" class="navbtn active" id="navNew">New entry</button><button type="button" class="navbtn adm" id="navBranches">Branches</button></div>
+      <div class="rail-footer"><div class="whoami" id="whoami"></div><button type="button" class="logout" id="logoutBtn">Log out</button></div>
     </aside>
     <main class="main">
-      <div class="topbar"><div><h2>Consignment entry</h2><p>Create a clean, print-ready GC receipt in under a minute.</p></div><div class="badge">Draft · auto-preview</div></div>
-      <div class="workspace">
+      <div id="viewNew">
+        <div class="topbar"><div><div class="title-row"><h2 id="heading">Consignment entry</h2><button type="button" class="btn-primary newbtn" id="newEntryBtn">Create New Entry</button></div><p id="entryHint">Create a clean, print-ready GC receipt in under a minute.</p></div><div class="badge">Draft</div></div>
         <section class="card form-card">
-          <div class="step-head"><div><div class="page-tag" id="pageTag">Page 01 / 03</div><h3 id="stepTitle">Shipment details</h3><p id="stepHint">Start with the identifiers and parties on the consignment.</p></div></div>
           <form id="entryForm">
-            <div class="fields" id="fields"></div>
-            <div class="actions"><button type="button" class="btn-ghost" id="backBtn">Back</button><div><button type="button" class="btn-secondary" id="clearBtn">Clear</button> <button type="submit" class="btn-primary" id="nextBtn">Next</button></div></div>
+            <div id="fields"></div>
+            <div class="actions"><div class="totalbox">Total<b id="totalOut">0.00</b></div><div><button type="submit" class="btn-primary" id="nextBtn">Finish entry</button><div class="donebtns hidden" id="doneBtns"><button type="button" class="btn-secondary" id="doneView">View</button><button type="button" class="btn-secondary" id="donePdf">Download PDF</button><button type="button" class="btn-secondary" id="donePrint">Print</button></div></div></div>
           </form>
         </section>
-        <aside class="card review">
-          <div class="review-top"><h3>Live receipt preview</h3><span class="hint">Updates as you type</span></div>
-          <div class="mini-note preview-note" id="note">
-            <div class="mini-head"><span class="logo">SABRI</span><span class="title">SABRI LOGISTICS</span><small>H.O. : 1-2. Balaji Complex · Opp Kristana Hotel · Near Shree Shyam Dharmakanta, Bharatnagar. · Morbi Gujarat - 363642<br>Tel.: 9876987695,6877456345 · E-mail: s[email protected]</small></div>
-            <div class="mini-meta"><div><b>G.C. NO.</b><span data-out="gc"></span></div><div><b>DATE</b><span data-out="date"></span></div><div><b>PAY TYPE</b><span>Paid</span></div></div>
-            <div class="mini-body"><div class="mini-left"><div class="mini-row"><div><b>FROM</b><br><span data-out="from"></span></div><div><b>TO</b><br><span data-out="to"></span></div></div><div class="mini-row"><div><b>PRIVATE MARK</b><br><span data-out="privateMark"></span></div><div><b>INVOICE VALUE</b><br><span data-out="invoiceValue"></span></div></div><div class="mini-row"><div><b>CONSIGNOR</b><br><span data-out="consignor"></span></div><div><b>CONSIGNEE</b><br><span data-out="consignee"></span></div></div><table class="mini-table"><thead><tr><th>QTY</th><th>PACKAGE TYPE</th><th>DESC.</th><th>WT.</th><th>CHARG. WT.</th></tr></thead><tbody><tr><td data-out="quantity"></td><td data-out="packageType"></td><td data-out="description"></td><td data-out="weight"></td><td data-out="chargeWeight"></td></tr></tbody></table></div><div class="mini-right"><div class="mini-row"><div><b>FREIGHT</b></div><div data-out="freight"></div></div><div class="mini-row"><div><b>BC</b></div><div data-out="bc"></div></div><div class="mini-row"><div><b>DOOR DEL.</b></div><div data-out="doorDelivery"></div></div><div class="mini-row"><div><b>HANDLING</b></div><div data-out="handling"></div></div><div class="mini-row"><div><b>OTHER</b></div><div data-out="other"></div></div><div class="mini-row"><div><b>SGST</b></div><div data-out="sgst"></div></div><div class="mini-row"><div><b>CGST</b></div><div data-out="cgst"></div></div><div class="mini-total">TOTAL <span data-out="total">0</span></div></div></div>
-            <div class="mini-bottom"><div>GC PAYABLE BY<br><strong>Consignee</strong></div><div class="mini-copy">CONSIGNOR COPY</div></div>
-          </div><div class="print-sheet" id="printSheet"></div>
-          <div class="review-actions"><button type="button" class="btn-secondary" id="printBtn">Print receipt</button><button type="button" class="btn-primary" id="finishBtn">Finish entry</button></div>
-        </aside>
       </div>
+      <section id="viewDash" class="hidden">
+        <div class="topbar"><div><div class="title-row"><h2>Dashboard</h2><div class="tabs"><button type="button" class="tab active" id="tabEntries">GC ENTRY</button><button type="button" class="tab" id="tabLR">REPORT</button><button type="button" class="tab" id="tabIn">INWARD</button><button type="button" class="tab" id="tabSlip">DELIVERY SLIP</button></div></div><p id="dashHint">All GC entries saved so far. Click a row to view it.</p></div><div class="badge" id="mode"></div></div>
+        <div id="paneEntries"><div class="toolbar"><input type="search" id="gcSearch" placeholder="Search by GC number" autocomplete="off"><select id="gcSort" aria-label="Sort by"><option value="">Sort: newest saved</option><option value="gcAsc">GC number: low to high</option><option value="gcDesc">GC number: high to low</option><option value="dateDesc">Date: newest first</option><option value="dateAsc">Date: oldest first</option></select><select id="gcPay" aria-label="Filter by pay type"><option value="">All pay types</option><option>Paid</option><option>To Pay</option><option>To be Billed</option></select><span class="gccount" id="gcCount"></span></div><div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>GC No</th><th>Date</th><th>From</th><th>To</th><th>Consignor</th><th>Consignee</th><th>Pay Type</th><th>Total</th><th>Saved</th><th></th></tr></thead><tbody id="rows"></tbody></table></div></div>
+        <div id="paneLR" class="hidden"><div class="lr-top"><button type="button" class="btn-primary" id="newLRBtn">Create New LR</button></div>
+          <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>Memo No</th><th>Date</th><th>From</th><th>To</th><th>Total GCs</th><th>Truck</th><th>Saved</th><th></th></tr></thead><tbody id="lrRows"></tbody></table></div></div>
+        <div id="paneIn" class="hidden"><div class="lr-top"><button type="button" class="btn-primary" id="receivedBtn">RECEIVED</button></div>
+          <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>GC No</th><th>Date</th><th>From</th><th>To</th><th>Consignor</th><th>Consignee</th><th>Pay Type</th><th>Total</th><th>Status</th></tr></thead><tbody id="inRows"></tbody></table></div></div>
+        <div id="paneSlip" class="hidden"><div class="lr-top"><button type="button" class="btn-primary" id="newSlipBtn">Create Delivery slip</button></div>
+          <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>Slip No</th><th>Date</th><th>GC Numbers</th><th>Total GCs</th><th>Total Amount</th><th>Saved</th></tr></thead><tbody id="slipRows"></tbody></table></div></div>
+      </section>
+      <section id="viewBranches" class="hidden"><div id="brBody"></div></section>
+      <div class="modal hidden" id="lrModal"><div class="modal-box" id="lrBox"></div></div>
     </main>
   </div>
+  <div class="login hidden" id="loginView"><form class="login-card" id="loginForm" autocomplete="on">
+    <div class="brand"><div class="brand-mark">SL</div><strong>SABRI<br>LOGISTICS</strong></div>
+    <div><h2 id="lgTitle">Sign in</h2><p class="sub" id="lgSub">Enter your phone number (employees) or email (admin).</p></div>
+    <div class="field" id="lgIdWrap"><label for="lgId">Phone number or email</label><input id="lgId" name="username" autocomplete="username" autocapitalize="off" spellcheck="false"></div>
+    <div class="field hidden" id="lgPwWrap"><label for="lgPw" id="lgPwLabel">Password</label><input id="lgPw" name="password" type="password" autocomplete="current-password"></div>
+    <div class="field hidden" id="lgPw2Wrap"><label for="lgPw2">Confirm password</label><input id="lgPw2" type="password" autocomplete="new-password"></div>
+    <div class="lg-err" id="lgErr"></div>
+    <button type="submit" class="btn-primary" id="lgBtn">Continue</button>
+    <button type="button" class="btn-ghost hidden" id="lgBack">Use a different number / email</button>
+  </form></div>
   <div class="toast" id="toast"></div>
-  <script>
-    const pages=[
-      {title:'Shipment details',hint:'Start with the identifiers and parties on the consignment.',fields:[['gc','GC Number','text','e.g. 459403'],['date','Date','date',''],['from','From','text','Origin city'],['to','To','text','Destination city'],['privateMark','Private Mark','text','Optional mark or reference'],['invoiceValue','Invoice Value','number','Amount'],['consignor','Consignor','text','Name / company'],['consignee','Consignee','text','Name / company']]},
-      {title:'Cargo details',hint:'Describe the goods exactly as they should appear on the receipt.',fields:[['quantity','Quantity','number','e.g. 100'],['packageType','Package Type','text','e.g. Bags'],['description','Description','text','e.g. Sand']]},
-      {title:'Weight & charges',hint:'Add the measurable weight and each applicable charge head.',fields:[['weight','Wt.','number','e.g. 10.000'],['chargeWeight','Charge Wt.','number','e.g. 10.000'],['freight','Freight','number','0'],['bc','BC','number','0'],['doorDelivery','Door Del.','number','0'],['handling','Handling','number','0'],['other','Other','number','0'],['sgst','SGST','number','0'],['cgst','CGST','number','0']]}
-    ];
-    let page=0;const data={};const fieldsEl=document.querySelector('#fields');
-    const $=s=>document.querySelector(s);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    function render(){const p=pages[page];$('#pageTag').textContent=`Page 0${page+1} / 03`;$('#stepTitle').textContent=p.title;$('#stepHint').textContent=p.hint;fieldsEl.innerHTML=p.fields.map(([key,label,type,placeholder])=>`<div class="field ${page===0&&['consignor','consignee'].includes(key)?'full':''}"><label for="${key}">${label}</label><input id="${key}" name="${key}" type="${type}" placeholder="${placeholder}" value="${esc(data[key]||'')}" ${['gc','date','from','to','consignor','consignee','quantity','packageType','description'].includes(key)?'required':''}/></div>`).join('');document.querySelectorAll('.step').forEach((el,i)=>el.classList.toggle('active',i===page));document.querySelectorAll('.step').forEach((el,i)=>el.classList.toggle('done',i<page));$('#backBtn').disabled=page===0;$('#nextBtn').textContent=page===pages.length-1?'Review receipt':'Next';const first=fieldsEl.querySelector('input');if(first)first.focus();}
-    function collect(){fieldsEl.querySelectorAll('input').forEach(i=>data[i.name]=i.value);updateNote();}
-    function updateNote(){document.querySelectorAll('[data-out]').forEach(el=>{const k=el.dataset.out;el.textContent=data[k]||'—'});const total=['freight','bc','doorDelivery','handling','other','sgst','cgst'].reduce((a,k)=>a+(parseFloat(data[k])||0),0);document.querySelector('[data-out="total"]').textContent=total.toLocaleString('en-IN');syncPrintCopies();}
-    function syncPrintCopies(){const sheet=$('#printSheet');if(!sheet)return;sheet.innerHTML='';['CONSIGNOR COPY','CONSIGNEE COPY','DRIVER COPY'].forEach(label=>{const copy=$('#note').cloneNode(true);copy.removeAttribute('id');copy.classList.remove('preview-note');copy.querySelector('.mini-copy').textContent=label;sheet.appendChild(copy)})}
-    $('#entryForm').addEventListener('submit',e=>{e.preventDefault();collect();if(page<pages.length-1){page++;render()}else{showToast('Review complete — your receipt is ready to print.')}});
-    $('#backBtn').addEventListener('click',()=>{collect();if(page>0){page--;render()}});$('#clearBtn').addEventListener('click',()=>{fieldsEl.querySelectorAll('input').forEach(i=>{i.value='';data[i.name]=''});updateNote();fieldsEl.querySelector('input')?.focus();showToast('Current page cleared')});document.addEventListener('input',e=>{if(e.target.matches('input')){data[e.target.name]=e.target.value;updateNote()}});$('#printBtn').addEventListener('click',()=>window.print());$('#finishBtn').addEventListener('click',()=>{collect();showToast('Entry saved in this session');});function showToast(t){const el=$('#toast');el.textContent=t;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2600)}
-    render();updateNote();
-  </script>
+  <script src="app.js"></script>
 </body>
 </html>

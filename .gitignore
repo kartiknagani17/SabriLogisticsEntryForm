@@ -1,0 +1,3 @@
+.env
+.env.local.txt
+node_modules
