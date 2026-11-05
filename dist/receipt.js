@@ -19,11 +19,11 @@ const chargeTotal = d => ['freight', 'bilty', 'doorDel', 'handling', 'other', 'i
 const VARS = {
   'G.C. No: 5@29.71': ['c', d => 'G.C. No: ' + (d.gc || '')],
   '10-06-2025@72.92': ['c', d => dmy(d.date)],
-  'ABCDT6989Y@72.92': ['l', d => d.pan],
+  'ABCDT6989Y@72.92': ['l', () => PAN_NO],
   'Paid@72.92': ['r', d => d.payType],
   'ahmedabad@83.72': ['c', d => d.from],
   'gandhinagar@83.72': ['c', d => d.to],
-  'HFSK49503JFO304@83.72': ['l', d => d.enrl],
+  'HFSK49503JFO304@83.72': ['l', () => ENRL_NO],
   '9876987695,6877456345@94.52': ['c', d => d.bkgPh],
   'sldkjhr456@94.52': ['c', d => d.delPh],
   '159,736.40@94.52': ['r', d => amt(d.freight)],
@@ -53,6 +53,11 @@ const VARS = {
   'hshd@251.76': ['l', () => BANK.ifsc],
   'www.jjsjgdjahj.com@262.57': ['l', () => ''],
 };
+const PAN_NO = 'EPIPP7276E', ENRL_NO = '24EPIPP7276E1ZJ';
+const BO_DEFAULT = 'B.O. : Shop No. 07, Khara Kuva, Gandhi Chowk, Veraval -362 265 Dist. Gir-Somnath (Gujarat)';
+// the B.O. header line shows the GC's branch address (falls back to the old fixed address if the branch has none)
+const BO_VAR = ['c', d => d.boAddress ? 'B.O. : ' + d.boAddress.replace(/^B\.O\.\s*:?\s*/i, '') : BO_DEFAULT];
+const varOf = t => t.t.startsWith('B.O. :') ? BO_VAR : VARS[`${t.t}@${t.y}`];
 const BANK = { name: 'HDFC Bank', account: '50200119470541', ifsc: 'HDFC0000230' };
 const COPIES = ['CONSIGNOR COPY', 'CONSIGNEE COPY', 'DRIVER COPY'];
 const FONT = "Arial,'Liberation Sans',Helvetica,sans-serif";
@@ -103,17 +108,19 @@ function copySVG(d, label, imgs) {
     }
     if (t.t.trim() === 'CONSIGNOR COPY') { txt = label; }
     else {
-      const v = VARS[`${t.t}@${t.y}`];
+      const v = varOf(t);
       if (!v) { o += `<text x="${t.xs.join(' ')}" ${attrs}>${esc(t.t).replace(/ /g, NBSP)}</text>`; continue; } // fixed text: exact glyph origins from the PDF
       txt = v[1](d) ?? '';
     }
     // variable text: lay the glyphs out with the original's average advance, anchored like the original
-    const a = t.t.trim() === 'CONSIGNOR COPY' ? 'c' : VARS[`${t.t}@${t.y}`][0];
-    const W = runWidth(txt, t.s, t.b);
+    const a = t.t.trim() === 'CONSIGNOR COPY' ? 'c' : varOf(t)[0];
+    const k = t.t.startsWith('B.O. :') ? Math.min(1, 560 / runWidth(txt, t.s, t.b)) : 1; // long branch addresses shrink to fit the page
+    const sz = t.s * k, attrs2 = k < 1 ? attrs.replace(/font-size="[^"]*"/, `font-size="${(fs * k).toFixed(3)}"`) : attrs;
+    const W = runWidth(txt, sz, t.b);
     let ax = a === 'c' ? (t.x0 + t.x1) / 2 : a === 'r' ? t.x1 : t.x0;
     if (t.t.startsWith('G.C. No')) ax = box.cx;
     x0 = a === 'c' ? ax - W / 2 : a === 'r' ? ax - W : ax;
-    o += `<text x="${glyphXs(txt, t.s, t.b, x0).join(' ')}" ${attrs}>${esc(txt).replace(/ /g, NBSP)}</text>`;
+    o += `<text x="${glyphXs(txt, sz, t.b, x0).join(' ')}" ${attrs2}>${esc(txt).replace(/ /g, NBSP)}</text>`;
   }
   return o;
 }
