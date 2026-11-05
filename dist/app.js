@@ -9,7 +9,7 @@ const sections = [
   { title: 'Shipment details', fields: [
     ['gc', 'GC Number', T, 'e.g. 459403'], ['date', 'Date', 'date', ''], ['from', 'From', T, 'Origin city'], ['to', 'To', T, 'Destination city'],
     ['invNo', 'Invoice No.', T, ''], ['invoiceValue', 'Invoice Value', N, 'Amount'], ['payType', 'Pay Type', 'select', '', '', PAY], ['privateMark', 'Private Mark', T, 'Optional'],
-    ['bkgPh', 'Booking Ph.', T, ''], ['delPh', 'Delivery Ph.', T, ''] ] },
+  ] },
   { title: 'Parties & cargo', fields: [
     ['consignor', 'Consignor', T, 'Name / company', 'w2'], ['consignee', 'Consignee', T, 'Name / company', 'w2'],
     ['consignorGst', 'Consignor GST No', T, '', 'w2'], ['consigneeGst', 'Consignee GST No', T, '', 'w2'],
@@ -24,8 +24,9 @@ const defaults = { payType: 'Paid', payableBy: 'Consignee' };
 let data = { ...defaults };
 
 // map this form's field names onto the receipt renderer's
-const branchAddr = id => ((branches.find(b => b.id === (id === undefined ? curBranch() : id)) || {}).address || '').trim();
-const rd = (d, branchId) => ({ ...d, boAddress: branchAddr(branchId), qty: d.quantity, bilty: d.bc, doorDel: d.doorDelivery, igst: String((parseFloat(d.sgst) || 0) + (parseFloat(d.cgst) || 0)), invValue: d.invoiceValue });
+const branchOf = id => branches.find(b => b.id === (id === undefined ? curBranch() : id)) || {};
+const branchAddr = id => (branchOf(id).address || '').trim();
+const rd = (d, branchId) => ({ ...d, boAddress: branchAddr(branchId), bkgPh: branchOf(branchId).booking_ph || '', delPh: branchOf(branchId).delivery_ph || '', qty: d.quantity, bilty: d.bc, doorDel: d.doorDelivery, igst: String((parseFloat(d.sgst) || 0) + (parseFloat(d.cgst) || 0)), invValue: d.invoiceValue });
 
 function fieldHTML([key, label, type, ph, cls, opts]) {
   const req = REQUIRED.includes(key) ? 'required' : '';
@@ -541,7 +542,7 @@ function renderBranchList() {
 }
 function renderBranchDetail(b) {
   const emps = accts.filter(a => a.branch_id === b.id);
-  $('#brBody').innerHTML = `<div class="br-head"><div><button type="button" class="btn-ghost mini" data-a="back">&larr; All branches</button><h2 style="margin-top:8px">${esc(b.name)} ${b.active ? '' : '<span class="chip-st off">Off</span>'}</h2><p class="br-meta">${[b.city, b.address, b.phone].filter(Boolean).map(esc).join(' &middot; ') || 'No details added yet'}</p></div>
+  $('#brBody').innerHTML = `<div class="br-head"><div><button type="button" class="btn-ghost mini" data-a="back">&larr; All branches</button><h2 style="margin-top:8px">${esc(b.name)} ${b.active ? '' : '<span class="chip-st off">Off</span>'}</h2><p class="br-meta">${[b.city, b.address, b.phone, b.booking_ph && 'Booking ' + b.booking_ph, b.delivery_ph && 'Delivery ' + b.delivery_ph].filter(Boolean).map(esc).join(' &middot; ') || 'No details added yet'}</p></div>
     <div class="br-actions"><button type="button" class="btn-primary" data-a="viewData">View branch data</button><button type="button" class="btn-secondary" data-a="editBranch">Edit branch</button><button type="button" class="btn-secondary" data-a="toggleBranch">${b.active ? 'Switch off' : 'Switch on'}</button></div></div>
     <div class="br-sec"><h3>Employees (${emps.length})</h3><button type="button" class="btn-primary" data-a="addEmp">Add employee</button></div>
     <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th>Name</th><th>Phone</th><th>Password</th><th>Status</th><th></th></tr></thead><tbody>${emps.length ? emps.map(a => `<tr data-e="${a.id}"><td><b>${esc(a.name)}</b></td><td>${esc(a.phone)}</td><td>${a.has_password ? '<span class="chip-st ok">Set</span>' : '<span class="chip-st wait">Not set yet</span>'}</td><td>${stChip(a.active)}</td><td><button type="button" class="btn-secondary mini" data-a="editEmp">Edit</button><button type="button" class="btn-secondary mini" data-a="resetEmp" ${a.has_password ? '' : 'disabled'}>Reset password</button><button type="button" class="btn-secondary mini" data-a="toggleEmp">${a.active ? 'Switch off' : 'Switch on'}</button></td></tr>`).join('') : '<tr><td colspan="5">No employees yet. Use Add employee.</td></tr>'}</tbody></table></div>`;
@@ -554,12 +555,12 @@ $('#brBody').addEventListener('click', async e => {
     if (a === 'back') { brOpen = null; return renderBranches(); }
     if (a === 'open' || (!a && rowB)) { brOpen = +rowB.dataset.b; return renderBranches(); }
     if (a === 'addBranch') return formModal('Add branch', 'Create the branch first, then add its employees.', [
-      { k: 'name', label: 'Branch name *', ph: 'e.g. Surat' }, { k: 'city', label: 'City' }, { k: 'phone', label: 'Phone', mode: 'tel' }, { k: 'address', label: 'Address', full: true }],
-      async v => { if (!v.name) throw new Error('Branch name is required.'); const x = await writeOk(await sbFetch('branches', { method: 'POST', headers: { Prefer: 'return=representation' }, body: json({ name: v.name, city: v.city || null, phone: v.phone || null, address: v.address || null }) }), 'A branch with this name already exists.'); brOpen = (await x.json())[0].id; await done(); showToast('Branch added'); }, 'Add branch');
+      { k: 'name', label: 'Branch name *', ph: 'e.g. Surat' }, { k: 'city', label: 'City' }, { k: 'phone', label: 'Phone', mode: 'tel' }, { k: 'address', label: 'Address', full: true }, { k: 'bkgPh', label: 'Booking Ph.', mode: 'tel' }, { k: 'delPh', label: 'Delivery Ph.', mode: 'tel' }],
+      async v => { if (!v.name) throw new Error('Branch name is required.'); const x = await writeOk(await sbFetch('branches', { method: 'POST', headers: { Prefer: 'return=representation' }, body: json({ name: v.name, city: v.city || null, phone: v.phone || null, address: v.address || null, booking_ph: v.bkgPh || null, delivery_ph: v.delPh || null }) }), 'A branch with this name already exists.'); brOpen = (await x.json())[0].id; await done(); showToast('Branch added'); }, 'Add branch');
     if (!b) return;
     if (a === 'editBranch') return formModal('Edit branch', b.name, [
-      { k: 'name', label: 'Branch name *', val: b.name }, { k: 'city', label: 'City', val: b.city }, { k: 'phone', label: 'Phone', val: b.phone, mode: 'tel' }, { k: 'address', label: 'Address', val: b.address, full: true }],
-      async v => { if (!v.name) throw new Error('Branch name is required.'); await writeOk(await sbFetch(`branches?id=eq.${b.id}`, { method: 'PATCH', body: json({ name: v.name, city: v.city || null, phone: v.phone || null, address: v.address || null }) }), 'A branch with this name already exists.'); await done(); showToast('Branch updated'); });
+      { k: 'name', label: 'Branch name *', val: b.name }, { k: 'city', label: 'City', val: b.city }, { k: 'phone', label: 'Phone', val: b.phone, mode: 'tel' }, { k: 'address', label: 'Address', val: b.address, full: true }, { k: 'bkgPh', label: 'Booking Ph.', val: b.booking_ph, mode: 'tel' }, { k: 'delPh', label: 'Delivery Ph.', val: b.delivery_ph, mode: 'tel' }],
+      async v => { if (!v.name) throw new Error('Branch name is required.'); await writeOk(await sbFetch(`branches?id=eq.${b.id}`, { method: 'PATCH', body: json({ name: v.name, city: v.city || null, phone: v.phone || null, address: v.address || null, booking_ph: v.bkgPh || null, delivery_ph: v.delPh || null }) }), 'A branch with this name already exists.'); await done(); showToast('Branch updated'); });
     if (a === 'toggleBranch') {
       if (b.active && !confirm(`Switch off ${b.name}? Its employees will not be able to sign in. Nothing is deleted.`)) return;
       await writeOk(await sbFetch(`branches?id=eq.${b.id}`, { method: 'PATCH', body: json({ active: !b.active }) })); const was = b.active; await done(); return showToast(was ? 'Branch switched off' : 'Branch switched on');
