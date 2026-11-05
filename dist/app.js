@@ -9,7 +9,7 @@ const sections = [
   { title: 'Shipment details', fields: [
     ['gc', 'GC Number', T, 'e.g. 459403'], ['date', 'Date', 'date', ''], ['from', 'From', T, 'Origin city'], ['to', 'To', T, 'Destination city'],
     ['invNo', 'Invoice No.', T, ''], ['invoiceValue', 'Invoice Value', N, 'Amount'], ['payType', 'Pay Type', 'select', '', '', PAY], ['privateMark', 'Private Mark', T, 'Optional'],
-    ['pan', 'PAN No', T, ''], ['enrl', 'ENRL No', T, ''], ['bkgPh', 'Booking Ph.', T, ''], ['delPh', 'Delivery Ph.', T, ''] ] },
+  ] },
   { title: 'Parties & cargo', fields: [
     ['consignor', 'Consignor', T, 'Name / company', 'w2'], ['consignee', 'Consignee', T, 'Name / company', 'w2'],
     ['consignorGst', 'Consignor GST No', T, '', 'w2'], ['consigneeGst', 'Consignee GST No', T, '', 'w2'],
@@ -24,7 +24,9 @@ const defaults = { payType: 'Paid', payableBy: 'Consignee' };
 let data = { ...defaults };
 
 // map this form's field names onto the receipt renderer's
-const rd = d => ({ ...d, qty: d.quantity, bilty: d.bc, doorDel: d.doorDelivery, igst: String((parseFloat(d.sgst) || 0) + (parseFloat(d.cgst) || 0)), invValue: d.invoiceValue });
+const branchOf = id => branches.find(b => b.id === (id === undefined ? curBranch() : id)) || {};
+const branchAddr = id => (branchOf(id).address || '').trim();
+const rd = (d, branchId) => ({ ...d, boAddress: branchAddr(branchId), bkgPh: branchOf(branchId).booking_ph || '', delPh: branchOf(branchId).delivery_ph || '', qty: d.quantity, bilty: d.bc, doorDel: d.doorDelivery, igst: String((parseFloat(d.sgst) || 0) + (parseFloat(d.cgst) || 0)), invValue: d.invoiceValue });
 
 function fieldHTML([key, label, type, ph, cls, opts]) {
   const req = REQUIRED.includes(key) ? 'required' : '';
@@ -129,14 +131,14 @@ async function showDoc(title, sub, pagesFn, name) {
   $('#docPdf').onclick = async () => { const b = $('#docPdf'); b.disabled = true; b.textContent = 'Preparing…'; try { await svgToPDF(await pagesFn(true), name + '.pdf'); } catch (e) { showToast(e.message, true); } b.disabled = false; b.textContent = 'Download PDF'; };
   $('#docPrint').onclick = async () => svgPrint(await pagesFn(true), name);
 }
-const receiptPagesFn = d => async inline => [receiptSVG(rd(d), inline ? await inlineImgs() : undefined)];
+const receiptPagesFn = (d, branchId) => async inline => [receiptSVG(rd(d, branchId), inline ? await inlineImgs() : undefined)];
 // LR rows always show the GC's current pay type and total (so an Inward pay-type change and older LRs are reflected)
 async function liveLR(lr, branch) {
   let list = []; try { list = await store.list(branch); } catch (e) {}
   const by = new Map(list.map(e => [String(e.gc_no), e]));
   return { ...lr, rows: (lr.rows || []).map(r => { const e = by.get(String(r.lr)); return e ? { ...r, pay: e.data.payType || r.pay, total: e.total } : r; }) };
 }
-const lrPagesFn = (lr, branch) => async () => lrPages(await liveLR(lr, branch));
+const lrPagesFn = (lr, branch) => async inline => lrPages(await liveLR(lr, branch), inline ? await inlineImgs() : undefined);
 
 // ---- form events ----
 document.addEventListener('input', e => {
@@ -240,9 +242,9 @@ $('#accFrom').addEventListener('change', renderAcc); $('#accTo').addEventListene
 $('#accClear').addEventListener('click', () => { $('#accFrom').value = ''; $('#accTo').value = ''; renderAcc(); });
 $('#rows').addEventListener('click', async e => {
   const tr = e.target.closest('tr.row'); if (!tr) return; const row = viewList[tr.dataset.i], a = e.target.dataset.a;
-  if (a === 'pdf') return receiptPDF(rd(row.data), `GC-${row.gc_no}.pdf`);
+  if (a === 'pdf') return receiptPDF(rd(row.data, row.branch_id), `GC-${row.gc_no}.pdf`);
   if (a === 'print') return receiptPrint(rd(row.data));
-  showDoc('GC ' + row.gc_no, 'Saved receipt.', receiptPagesFn(row.data), `GC-${row.gc_no}`);
+  showDoc('GC ' + row.gc_no, 'Saved receipt.', receiptPagesFn(row.data, row.branch_id), `GC-${row.gc_no}`);
 });
 
 // ---- LR (lorry receipt) ----
@@ -271,8 +273,7 @@ async function openCreateLR() {
     <div class="pk-list" id="pkList"></div>
     <div class="pk-status" id="pkStatus"></div>
     <div class="fields"><div class="field"><label for="lrDate">Date</label><input id="lrDate" type="date" value="${today}"></div><div class="field"><label for="lrTruck">Truck No. (optional)</label><input id="lrTruck"></div>
-    <div class="field"><label for="lrDriver">Driver Name (optional)</label><input id="lrDriver"></div><div class="field"><label for="lrSupplier">Truck Supplier (optional)</label><input id="lrSupplier"></div>
-    <div class="field full"><label for="lrOwner">Owner Name &amp; Add. (optional)</label><input id="lrOwner"></div></div>
+    <div class="field"><label for="lrDriver">Driver Name (optional)</label><input id="lrDriver"></div></div>
     <div class="modal-actions sticky"><span class="pk-count" id="pkCount"></span><button type="button" class="btn-secondary" id="lrCancel">Cancel</button><button type="button" class="btn-primary" id="lrCreate">Create LR</button></div>`;
   openModal(true);
   const list = $('#pkList'), search = $('#lrSearch');
@@ -310,9 +311,9 @@ async function openCreateLR() {
   $('#lrCancel').onclick = closeModal;
   $('#lrCreate').onclick = async () => {
     if (!order.length) { showToast('Pick at least one GC number', true); search.focus(); return; }
-    const lr = lrFromEntries(order.map(i => pool[i]), { memoNo, date: $('#lrDate').value, truckNo: $('#lrTruck').value.trim(), driverName: $('#lrDriver').value.trim(), truckSupplier: $('#lrSupplier').value.trim(), ownerName: $('#lrOwner').value.trim() });
+    const lr = lrFromEntries(order.map(i => pool[i]), { memoNo, date: $('#lrDate').value, truckNo: $('#lrTruck').value.trim(), driverName: $('#lrDriver').value.trim() });
     const b = $('#lrCreate'); b.disabled = true; b.textContent = 'Creating…';
-    try { await lrStore.save(lr); warmP = null; await showDoc('LR ' + lr.memoNo + ' created', 'Total cartons and the stamp are left blank to be written by hand.', lrPagesFn(lr, lrBranch), `LR-${lr.memoNo}`); if (tab === 'lr') loadLRs().catch(() => {}); }
+    try { await lrStore.save(lr); warmP = null; await showDoc('LR ' + lr.memoNo + ' created', 'The stamp is left blank to be written by hand.', lrPagesFn(lr, lrBranch), `LR-${lr.memoNo}`); if (tab === 'lr') loadLRs().catch(() => {}); }
     catch (err) { showToast(err.message, true); b.disabled = false; b.textContent = 'Create LR'; }
   };
   render(); search.focus();
@@ -320,8 +321,8 @@ async function openCreateLR() {
 $('#newLRBtn').addEventListener('click', openCreateLR);
 $('#lrRows').addEventListener('click', async e => {
   const tr = e.target.closest('tr.row'); if (!tr) return; const l = lrs[tr.dataset.i], a = e.target.dataset.a;
-  if (a === 'pdf') return svgToPDF(lrPages(await liveLR(l.data, l.branch_id)), `LR-${l.memo_no}.pdf`);
-  if (a === 'print') return svgPrint(lrPages(await liveLR(l.data, l.branch_id)), `LR ${l.memo_no}`);
+  if (a === 'pdf') return svgToPDF(lrPages(await liveLR(l.data, l.branch_id), await inlineImgs()), `LR-${l.memo_no}.pdf`);
+  if (a === 'print') return svgPrint(lrPages(await liveLR(l.data, l.branch_id), await inlineImgs()), `LR ${l.memo_no}`);
   showDoc('LR ' + l.memo_no, 'Saved lorry receipt.', lrPagesFn(l.data, l.branch_id), `LR-${l.memo_no}`);
 });
 
@@ -387,7 +388,7 @@ $('#receivedBtn').addEventListener('click', openReceived);
 // ---- DELIVERY SLIP ----
 async function loadSlips() {
   slips = await slipStore.list();
-  $('#slipRows').innerHTML = slips.length ? slips.map(s => `<tr><td class="adm">${esc(bname(s.branch_id))}</td><td>${esc(s.slip_no)}</td><td>${esc(dmy(s.slip_date))}</td><td title="${esc((s.gc_numbers || []).join(', '))}">${esc((s.gc_numbers || []).slice(0, 6).join(', '))}${(s.gc_numbers || []).length > 6 ? '…' : ''}</td><td>${(s.gc_numbers || []).length}</td><td>${fmt(s.total)}</td><td>${new Date(s.created_at).toLocaleString('en-IN')}</td></tr>`).join('') : '<tr><td colspan="7">No delivery slips yet. Use Create Delivery slip.</td></tr>';
+  $('#slipRows').innerHTML = slips.length ? slips.map(s => `<tr><td class="adm">${esc(bname(s.branch_id))}</td><td>${esc(s.slip_no)}</td><td>${esc(dmy(s.slip_date))}</td><td>${(s.gc_numbers || []).length}</td><td>${fmt(s.total)}</td><td>${new Date(s.created_at).toLocaleString('en-IN')}</td></tr>`).join('') : '<tr><td colspan="6">No delivery slips yet. Use Create Delivery slip.</td></tr>';
 }
 async function openCreateSlip() {
   try { needBranch(); } catch (err) { showToast(err.message, true); return; }
@@ -541,7 +542,7 @@ function renderBranchList() {
 }
 function renderBranchDetail(b) {
   const emps = accts.filter(a => a.branch_id === b.id);
-  $('#brBody').innerHTML = `<div class="br-head"><div><button type="button" class="btn-ghost mini" data-a="back">&larr; All branches</button><h2 style="margin-top:8px">${esc(b.name)} ${b.active ? '' : '<span class="chip-st off">Off</span>'}</h2><p class="br-meta">${[b.city, b.address, b.phone].filter(Boolean).map(esc).join(' &middot; ') || 'No details added yet'}</p></div>
+  $('#brBody').innerHTML = `<div class="br-head"><div><button type="button" class="btn-ghost mini" data-a="back">&larr; All branches</button><h2 style="margin-top:8px">${esc(b.name)} ${b.active ? '' : '<span class="chip-st off">Off</span>'}</h2><p class="br-meta">${[b.city, b.address, b.phone, b.booking_ph && 'Booking ' + b.booking_ph, b.delivery_ph && 'Delivery ' + b.delivery_ph].filter(Boolean).map(esc).join(' &middot; ') || 'No details added yet'}</p></div>
     <div class="br-actions"><button type="button" class="btn-primary" data-a="viewData">View branch data</button><button type="button" class="btn-secondary" data-a="editBranch">Edit branch</button><button type="button" class="btn-secondary" data-a="toggleBranch">${b.active ? 'Switch off' : 'Switch on'}</button></div></div>
     <div class="br-sec"><h3>Employees (${emps.length})</h3><button type="button" class="btn-primary" data-a="addEmp">Add employee</button></div>
     <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th>Name</th><th>Phone</th><th>Password</th><th>Status</th><th></th></tr></thead><tbody>${emps.length ? emps.map(a => `<tr data-e="${a.id}"><td><b>${esc(a.name)}</b></td><td>${esc(a.phone)}</td><td>${a.has_password ? '<span class="chip-st ok">Set</span>' : '<span class="chip-st wait">Not set yet</span>'}</td><td>${stChip(a.active)}</td><td><button type="button" class="btn-secondary mini" data-a="editEmp">Edit</button><button type="button" class="btn-secondary mini" data-a="resetEmp" ${a.has_password ? '' : 'disabled'}>Reset password</button><button type="button" class="btn-secondary mini" data-a="toggleEmp">${a.active ? 'Switch off' : 'Switch on'}</button></td></tr>`).join('') : '<tr><td colspan="5">No employees yet. Use Add employee.</td></tr>'}</tbody></table></div>`;
@@ -554,12 +555,12 @@ $('#brBody').addEventListener('click', async e => {
     if (a === 'back') { brOpen = null; return renderBranches(); }
     if (a === 'open' || (!a && rowB)) { brOpen = +rowB.dataset.b; return renderBranches(); }
     if (a === 'addBranch') return formModal('Add branch', 'Create the branch first, then add its employees.', [
-      { k: 'name', label: 'Branch name *', ph: 'e.g. Surat' }, { k: 'city', label: 'City' }, { k: 'phone', label: 'Phone', mode: 'tel' }, { k: 'address', label: 'Address', full: true }],
-      async v => { if (!v.name) throw new Error('Branch name is required.'); const x = await writeOk(await sbFetch('branches', { method: 'POST', headers: { Prefer: 'return=representation' }, body: json({ name: v.name, city: v.city || null, phone: v.phone || null, address: v.address || null }) }), 'A branch with this name already exists.'); brOpen = (await x.json())[0].id; await done(); showToast('Branch added'); }, 'Add branch');
+      { k: 'name', label: 'Branch name *', ph: 'e.g. Surat' }, { k: 'city', label: 'City' }, { k: 'phone', label: 'Phone', mode: 'tel' }, { k: 'address', label: 'Address', full: true }, { k: 'bkgPh', label: 'Booking Ph.', mode: 'tel' }, { k: 'delPh', label: 'Delivery Ph.', mode: 'tel' }],
+      async v => { if (!v.name) throw new Error('Branch name is required.'); const x = await writeOk(await sbFetch('branches', { method: 'POST', headers: { Prefer: 'return=representation' }, body: json({ name: v.name, city: v.city || null, phone: v.phone || null, address: v.address || null, booking_ph: v.bkgPh || null, delivery_ph: v.delPh || null }) }), 'A branch with this name already exists.'); brOpen = (await x.json())[0].id; await done(); showToast('Branch added'); }, 'Add branch');
     if (!b) return;
     if (a === 'editBranch') return formModal('Edit branch', b.name, [
-      { k: 'name', label: 'Branch name *', val: b.name }, { k: 'city', label: 'City', val: b.city }, { k: 'phone', label: 'Phone', val: b.phone, mode: 'tel' }, { k: 'address', label: 'Address', val: b.address, full: true }],
-      async v => { if (!v.name) throw new Error('Branch name is required.'); await writeOk(await sbFetch(`branches?id=eq.${b.id}`, { method: 'PATCH', body: json({ name: v.name, city: v.city || null, phone: v.phone || null, address: v.address || null }) }), 'A branch with this name already exists.'); await done(); showToast('Branch updated'); });
+      { k: 'name', label: 'Branch name *', val: b.name }, { k: 'city', label: 'City', val: b.city }, { k: 'phone', label: 'Phone', val: b.phone, mode: 'tel' }, { k: 'address', label: 'Address', val: b.address, full: true }, { k: 'bkgPh', label: 'Booking Ph.', val: b.booking_ph, mode: 'tel' }, { k: 'delPh', label: 'Delivery Ph.', val: b.delivery_ph, mode: 'tel' }],
+      async v => { if (!v.name) throw new Error('Branch name is required.'); await writeOk(await sbFetch(`branches?id=eq.${b.id}`, { method: 'PATCH', body: json({ name: v.name, city: v.city || null, phone: v.phone || null, address: v.address || null, booking_ph: v.bkgPh || null, delivery_ph: v.delPh || null }) }), 'A branch with this name already exists.'); await done(); showToast('Branch updated'); });
     if (a === 'toggleBranch') {
       if (b.active && !confirm(`Switch off ${b.name}? Its employees will not be able to sign in. Nothing is deleted.`)) return;
       await writeOk(await sbFetch(`branches?id=eq.${b.id}`, { method: 'PATCH', body: json({ active: !b.active }) })); const was = b.active; await done(); return showToast(was ? 'Branch switched off' : 'Branch switched on');

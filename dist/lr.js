@@ -18,7 +18,7 @@ function lrFromEntries(entries, extra) {
   return {
     memoNo: extra.memoNo, date: extra.date,
     from: uniq('from').join(', '), to: uniq('to').join(', '),
-    truckNo: extra.truckNo || '', driverName: extra.driverName || '', truckSupplier: extra.truckSupplier || '', ownerName: extra.ownerName || '',
+    truckNo: extra.truckNo || '', driverName: extra.driverName || '',
     rows: entries.map(e => {
       const d = e.data;
       return { dest: d.to || '', lr: d.gc || '', consignor: d.consignor || '', consignee: d.consignee || '', articles: d.quantity || '',
@@ -27,7 +27,7 @@ function lrFromEntries(entries, extra) {
   };
 }
 
-function lrSVG(lr, page = 0, pages = 1) {
+function lrSVG(lr, page = 0, pages = 1, imgs = { logo: 'assets/logo.png' }) {
   const R = LR_RED;
   const text = (x, y, size, str, o = {}) => `<text x="${x}" y="${y}" font-size="${size}" font-weight="${o.b ? 700 : 400}" fill="${o.c || R}"${o.a ? ` text-anchor="${o.a}"` : ''}${o.f ? ` font-family="${o.f}"` : ''}${o.ls ? ` letter-spacing="${o.ls}"` : ''}>${esc(str)}</text>`;
   const line = (x1, y1, x2, y2, w = 0.7) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${R}" stroke-width="${w}"/>`;
@@ -37,10 +37,8 @@ function lrSVG(lr, page = 0, pages = 1) {
   o += text(20, 22, 7, 'GSTIN : ', { b: 1 });
   o += text(297, 18, 6.5, 'SUBJECT TO VERAVAL JURISDICTION', { b: 1, a: 'middle', ls: 0.4 });
   o += text(577, 24, 9.5, 'M : 99986 22244', { b: 1, a: 'end' });
-  o += text(577, 36, 9.5, '70697 14662', { b: 1, a: 'end' });
-  // simple "S" mark with speed lines (the original logo is only available as a photo)
-  o += `<g fill="${R}"><text x="26" y="72" font-size="62" font-weight="700" font-style="italic" font-family="Georgia,serif">S</text></g>`;
-  o += `<g stroke="${R}" stroke-width="2.2" stroke-linecap="round"><line x1="20" y1="50" x2="42" y2="50"/><line x1="16" y1="58" x2="36" y2="58"/><line x1="22" y1="66" x2="34" y2="66"/></g>`;
+  // company logo (same as the GC receipt)
+  o += `<image href="${imgs.logo}" x="20" y="34" width="70" height="45.6" preserveAspectRatio="xMidYMid meet"/>`;
   o += `<text x="160" y="70" font-size="35" font-weight="700" fill="${R}" font-family="Rockwell,'Roboto Slab','Courier New',Georgia,serif" textLength="291" lengthAdjust="spacingAndGlyphs">Sabri Logistics</text>`;
   o += `<rect x="18" y="82" width="559" height="19" fill="${R}"/>`;
   o += text(297.5, 95, 8.6, 'Surat : Godown No. 12, Ambica Transport Compound, Nr. Mangalam Granite, Saroli Road, Surat-395010', { b: 1, a: 'middle', c: '#fff' });
@@ -57,18 +55,13 @@ function lrSVG(lr, page = 0, pages = 1) {
   o += field('Date :', 428, 456, 577, 128, dmy(lr.date));
   o += field('Truck No.', 20, 62, 230, 154, lr.truckNo);
   o += field('Driver Name :', 250, 312, 577, 154, lr.driverName);
-  o += field('Truck Supplier :', 20, 92, 270, 180, lr.truckSupplier);
-  o += field('Owner Name & Add. :', 282, 372, 577, 180, lr.ownerName);
 
   // ---- table ----
   const W = LR_COLS.reduce((a, c) => a + c[1], 0), H = LR_HEAD + LR_ROWS * LR_ROW;
   o += `<rect x="${LR_X0}" y="${LR_Y0}" width="${W}" height="${H}" fill="none" stroke="${R}" stroke-width="1"/>`;
-  o += line(LR_X0, LR_Y0 + LR_HEAD, LR_X0 + W, LR_Y0 + LR_HEAD, 1);
-  for (let i = 1; i <= LR_ROWS - 1; i++) o += line(LR_X0, LR_Y0 + LR_HEAD + i * LR_ROW, LR_X0 + W, LR_Y0 + LR_HEAD + i * LR_ROW, 0.6);
   let x = LR_X0; const xs = [];
   LR_COLS.forEach(([label, w], i) => {
     xs.push(x);
-    if (i) o += line(x, LR_Y0, x, LR_Y0 + H, 0.7);
     const parts = label.split('|'), cx = x + w / 2;
     parts.forEach((p, j) => { o += text(cx, LR_Y0 + (parts.length > 1 ? 11 + j * 8.5 : 16), parts.length > 1 ? 6.6 : 7.4, p, { b: 1, a: 'middle' }); });
     x += w;
@@ -92,14 +85,20 @@ function lrSVG(lr, page = 0, pages = 1) {
     else if (p === 'to be billed') o += text(xs[7] + LR_COLS[7][1] / 2, yb, 7, 'TBB', { c: ink, a: 'middle', b: 1 });
   });
 
-  // ---- total line (filled by hand) ----
-  o += text(22, 800, 8.5, 'Total', { b: 1 }) + line(50, 802, 577, 802, 0.8);
+  // ---- totals over the whole LR, printed on the last page only ----
+  if (page === pages - 1) {
+    const rows = lr.rows || [], sum = f => rows.reduce((a, r) => a + (parseFloat(f(r)) || 0), 0), pays = k => sum(r => (r.pay || '').toLowerCase() === k ? r.total : 0);
+    const num = (n, d) => n.toLocaleString('en-IN', { maximumFractionDigits: d });
+    const tot = (c, str) => { const [t, sz] = lrFit(str, LR_COLS[c][1] - 3, 8.5, true); o += text(xs[c] + LR_COLS[c][1] / 2, 782, sz, t, { c: '#111', a: 'middle', b: 1 }); };
+    o += text(22, 782, 9, 'Total', { b: 1 });
+    tot(4, num(sum(r => r.articles), 2)); tot(6, num(sum(r => r.weight), 3)); tot(7, num(pays('to pay'), 2)); tot(8, num(pays('paid'), 2));
+  }
   if (pages > 1) o += text(577, 822, 7, `Page ${page + 1} of ${pages}`, { a: 'end' });
   return o + '</svg>';
 }
 
 // one SVG per A4 page (20 rows each) so any number of GCs fits
-function lrPages(lr) {
+function lrPages(lr, imgs) {
   const n = Math.max(1, Math.ceil((lr.rows || []).length / LR_ROWS));
-  return Array.from({ length: n }, (_, i) => lrSVG(lr, i, n));
+  return Array.from({ length: n }, (_, i) => lrSVG(lr, i, n, imgs));
 }
