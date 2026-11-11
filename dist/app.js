@@ -70,7 +70,7 @@ async function rpc(fn, args) {
 // Lists are read a page at a time (newest first) and searches run in the database, so a screen
 // downloads only what it shows, however many entries the branches build up over the years.
 const PAGE = 100;
-const SETUP_MSG = 'The database needs an update: run supabase-scale.sql once in Supabase (SQL Editor).';
+const SETUP_MSG = 'The database needs an update: run the 4 files in the supabase-scale folder, in order, in Supabase (SQL Editor).';
 async function getJSON(path) { const x = await sbFetch(path); if (!x.ok) throw new Error(await x.text()); return x.json(); }
 // one page of a list; `more` tells whether there is another page after it
 async function getPage(path, offset) {
