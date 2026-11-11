@@ -8,11 +8,12 @@ const T = 'text', N = 'number';
 const sections = [
   { title: 'Shipment details', fields: [
     ['gc', 'GC Number', T, 'e.g. 459403'], ['date', 'Date', 'date', ''], ['from', 'From', T, 'Origin city'], ['to', 'To', T, 'Destination city'],
-    ['invNo', 'Invoice No.', T, ''], ['invoiceValue', 'Invoice Value', N, 'Amount'], ['payType', 'Pay Type', 'select', '', '', PAY], ['privateMark', 'Private Mark', T, 'Optional'],
+    ['ewbNo', 'E-Way Bill No.', T, '12 digits (optional)'], ['invNo', 'Invoice No.', T, ''], ['invoiceValue', 'Invoice Value', N, 'Amount'], ['payType', 'Pay Type', 'select', '', '', PAY], ['privateMark', 'Private Mark', T, 'Optional'],
   ] },
   { title: 'Parties & cargo', fields: [
     ['consignor', 'Consignor', T, 'Name / company', 'w2'], ['consignee', 'Consignee', T, 'Name / company', 'w2'],
     ['consignorGst', 'Consignor GST No', T, '', 'w2'], ['consigneeGst', 'Consignee GST No', T, '', 'w2'],
+    ['consignorPhone', 'Consignor WhatsApp No.', 'tel', '10 digits (optional)', 'w2'],
     ['quantity', 'Quantity', N, 'e.g. 100'], ['packageType', 'Package Type', 'select', '', '', PKG], ['description', 'Description', T, 'e.g. Sand'], ['payableBy', 'GC Payable By', T, 'Consignee'],
     ['remarks', 'Remarks', T, 'Optional', 'w2'] ] },
   { title: 'Weight & charges', fields: [
@@ -36,6 +37,7 @@ function fieldHTML([key, label, type, ph, cls, opts]) {
       opts.map(x => `<option value="${esc(x)}" ${v === x ? 'selected' : ''}>${esc(key === 'packageType' ? x[0].toUpperCase() + x.slice(1) : x)}</option>`).join('');
     return `<div class="field ${cls || ''}"><label for="${key}">${label}</label><select id="${key}" name="${key}" ${req}>${o}</select></div>`;
   }
+  if (key === 'ewbNo') return `<div class="field"><label for="ewbNo">${label}</label><div class="ewb-row"><input id="ewbNo" name="ewbNo" type="text" inputmode="numeric" maxlength="12" placeholder="${ph}" value="${esc(v)}"/><button type="button" class="btn-secondary mini" id="ewbGo">Submit</button></div></div>`;
   return `<div class="field ${cls || ''}"><label for="${key}">${label}</label><input id="${key}" name="${key}" type="${type}" ${type === 'number' ? 'step="any"' : ''} placeholder="${ph}" value="${esc(v)}" ${req}/></div>`;
 }
 function renderForm() {
@@ -65,36 +67,62 @@ async function rpc(fn, args) {
   if (!x.ok) throw new Error((j && j.message) || t || 'Request failed');
   return j;
 }
-// read every row of a query, 1000 at a time
-async function getAll(path) {
-  const rows = [];
-  for (let off = 0; ; off += 1000) { const x = await sbFetch(`${path}&limit=1000&offset=${off}`); if (!x.ok) throw new Error(await x.text()); const part = await x.json(); rows.push(...part); if (part.length < 1000) break; }
-  return rows;
+// Lists are read a page at a time (newest first) and searches run in the database, so a screen
+// downloads only what it shows, however many entries the branches build up over the years.
+const PAGE = 100;
+const SETUP_MSG = 'The database needs an update: run supabase-scale.sql once in Supabase (SQL Editor).';
+async function getJSON(path) { const x = await sbFetch(path); if (!x.ok) throw new Error(await x.text()); return x.json(); }
+// one page of a list; `more` tells whether there is another page after it
+async function getPage(path, offset) {
+  const rows = await getJSON(`${path}&limit=${PAGE + 1}&offset=${offset || 0}`);
+  return { rows: rows.slice(0, PAGE), more: rows.length > PAGE };
 }
-// two entries are duplicates when every field is identical (ignoring the print timestamp and surrounding spaces)
+// PostgREST filter values: quoted so commas, brackets and dots in GC numbers or names are safe
+const pq = v => '"' + String(v).replace(/["\\]/g, '\\$&') + '"';
+const inList = vals => encodeURIComponent(`in.(${vals.map(pq).join(',')})`);
+const likeAny = (cols, q) => { const v = pq('*' + String(q).trim() + '*'); return '&or=' + encodeURIComponent(`(${cols.map(c => `${c}.ilike.${v}`).join(',')})`); };
+// form values are saved trimmed and without empty fields
 const norm = d => { const o = {}; for (const [k, v] of Object.entries(d)) { if (k === 'printedAt') continue; const t = String(v ?? '').trim(); if (t !== '') o[k] = t; } return o; };
-const dupKey = d => { const n = norm(d); return JSON.stringify(Object.keys(n).sort().map(k => [k, n[k]])); };
+const isMissing = m => /PGRST20[25]|does not exist|404|Could not find the function/.test(m);
+const PICK = 'id,branch_id,gc_no,entry_date,from_city,to_city,consignor,consignee,total,quantity:data->>quantity';
 const store = {
+  // a GC number can be used once per branch: the database refuses a second one (409)
   async save(d) {
     const branch = needBranch(), clean = { ...norm(d), printedAt: d.printedAt }, r = rd(clean);
-    if ((await this.list(branch)).some(e => dupKey(e.data) === dupKey(d))) throw new Error('DUPLICATE');
-    const row = { branch_id: branch, gc_no: d.gc, entry_date: d.date || null, from_city: d.from, to_city: d.to, consignor: d.consignor, consignee: d.consignee, total: chargeTotal(r), data: clean };
-    const x = await sbFetch('entries', { method: 'POST', body: JSON.stringify(row) }); if (x.status === 409) throw new Error('DUPLICATE'); if (!x.ok) throw new Error(await x.text());
+    const row = { branch_id: branch, gc_no: clean.gc, entry_date: clean.date || null, from_city: clean.from, to_city: clean.to, consignor: clean.consignor, consignee: clean.consignee, total: chargeTotal(r), data: clean };
+    const x = await sbFetch('entries', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(row) });
+    if (x.status === 409) throw new Error('DUPLICATE'); if (!x.ok) throw new Error(await x.text());
   },
-  async list(b) {
-    const rows = await getAll(`entries?select=*&order=created_at.desc${bq(b)}`);
-    const seen = new Set(); return rows.filter(e => { const k = e.branch_id + '|' + dupKey(e.data); if (seen.has(k)) return false; seen.add(k); return true; });
+  // dashboard list: filtered, sorted and paged in the database
+  async page({ q, pay, sort, offset }) {
+    try { return await rpc('entries_page', { p_branch: curBranch() || null, p_q: q || null, p_pay: pay || null, p_sort: sort || null, p_limit: PAGE, p_offset: offset || 0 }); }
+    catch (e) { throw new Error(isMissing(e.message) ? SETUP_MSG : e.message); }
+  },
+  // newest GCs of a branch, optionally narrowed by a search (GC number, parties or cities); light columns only
+  search(branch, q, limit, cols) {
+    return getJSON(`entries?select=${cols || PICK}&order=created_at.desc&limit=${limit}${bq(branch)}${q ? likeAny(['gc_no', 'consignor', 'consignee', 'from_city', 'to_city'], q) : ''}`);
+  },
+  // the entries with these GC numbers (branch = null: any branch the user can see)
+  async byGcs(branch, gcs, cols) {
+    const out = [], u = [...new Set(gcs.map(String))];
+    for (let i = 0; i < u.length; i += 150) out.push(...await getJSON(`entries?select=${cols || '*'}${branch ? `&branch_id=eq.${branch}` : ''}&gc_no=${inList(u.slice(i, i + 150))}`));
+    return out;
+  },
+  async byIds(ids) {
+    const out = [];
+    for (let i = 0; i < ids.length; i += 150) out.push(...await getJSON(`entries?select=*&id=${inList(ids.slice(i, i + 150))}`));
+    return out;
   },
 };
 store.setPayType = async function (e, payType) {
   const data = { ...e.data, payType };
   const x = await sbFetch(`entries?id=eq.${e.id}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ data }) }); if (!x.ok) throw new Error(await x.text());
-  e.data = data; warmP = null;
+  e.data = data;
 };
 // generic "one table of saved rows" store (inward receipts, delivery slips)
 const tableStore = (table, missingMsg) => ({
   missing: m => /PGRST205|does not exist|404/.test(m) ? missingMsg : m,
-  async list() { try { return await getAll(`${table}?select=*&order=created_at.desc${bq()}`); } catch (e) { throw new Error(this.missing(e.message)); } },
+  async page(offset) { try { return await getPage(`${table}?select=*&order=created_at.desc${bq()}`, offset); } catch (e) { throw new Error(this.missing(e.message)); } },
   async add(rows) {
     const branch = needBranch();
     const x = await sbFetch(table, { method: 'POST', body: JSON.stringify(rows.map(r => ({ ...r, branch_id: branch }))) }); if (!x.ok) throw new Error(this.missing(await x.text()));
@@ -102,15 +130,19 @@ const tableStore = (table, missingMsg) => ({
 });
 const inwardStore = tableStore('inwards', 'The inwards table is missing in Supabase. Run supabase.sql and supabase-branches.sql once.');
 const slipStore = tableStore('delivery_slips', 'The delivery_slips table is missing in Supabase. Run supabase.sql and supabase-branches.sql once.');
+// numbers are sequential, so the highest of the latest few is the highest of all
+const nextNo = (list, key, prefix) => prefix + String(list.reduce((m, l) => Math.max(m, parseInt(String(l[key] || '').replace(/\D/g, '')) || 0), 0) + 1).padStart(3, '0');
+slipStore.nextNo = async () => nextNo(await getJSON(`delivery_slips?select=slip_no&order=id.desc&limit=50${bq()}`), 'slip_no', 'DS');
 const lrStore = {
   missing: m => /PGRST205|does not exist|404/.test(m) ? 'The lrs table is missing in Supabase. Run supabase.sql and supabase-branches.sql once.' : m,
   async save(lr) {
     const row = { branch_id: needBranch(), memo_no: lr.memoNo, lr_date: lr.date || null, gc_numbers: lr.rows.map(r => r.lr), data: lr };
     const x = await sbFetch('lrs', { method: 'POST', body: JSON.stringify(row) }); if (!x.ok) throw new Error(this.missing(await x.text()));
   },
-  async list() { try { return await getAll(`lrs?select=*&order=created_at.desc${bq()}`); } catch (e) { throw new Error(this.missing(e.message)); } },
-  async memoNos() { try { return await getAll(`lrs?select=memo_no${bq()}`); } catch (e) { throw new Error(this.missing(e.message)); } },
-  nextMemo(list) { const n = list.reduce((m, l) => Math.max(m, parseInt(String(l.memo_no || '').replace(/\D/g, '')) || 0), 0) + 1; return 'SL' + String(n).padStart(3, '0'); },
+  // the list shows a few columns; the full LR (all its rows) is read when it is opened
+  async page(offset) { try { return await getPage(`lrs?select=id,branch_id,memo_no,lr_date,created_at,gc_numbers,from:data->>from,to:data->>to,truckNo:data->>truckNo&order=created_at.desc${bq()}`, offset); } catch (e) { throw new Error(this.missing(e.message)); } },
+  async full(id) { return (await getJSON(`lrs?select=data&id=eq.${id}`))[0].data; },
+  async nextMemo() { try { return nextNo(await getJSON(`lrs?select=memo_no&order=id.desc&limit=50${bq()}`), 'memo_no', 'SL'); } catch (e) { throw new Error(this.missing(e.message)); } },
 };
 
 // ---- modal: document viewer with the actions on top ----
@@ -134,9 +166,9 @@ async function showDoc(title, sub, pagesFn, name) {
 const receiptPagesFn = (d, branchId) => async inline => [receiptSVG(rd(d, branchId), inline ? await inlineImgs() : undefined)];
 // LR rows always show the GC's current pay type and total (so an Inward pay-type change and older LRs are reflected)
 async function liveLR(lr, branch) {
-  let list = []; try { list = await store.list(branch); } catch (e) {}
+  let list = []; try { list = await store.byGcs(branch, (lr.rows || []).map(r => r.lr), 'gc_no,total,pay:data->>payType'); } catch (e) {}
   const by = new Map(list.map(e => [String(e.gc_no), e]));
-  return { ...lr, rows: (lr.rows || []).map(r => { const e = by.get(String(r.lr)); return e ? { ...r, pay: e.data.payType || r.pay, total: e.total } : r; }) };
+  return { ...lr, rows: (lr.rows || []).map(r => { const e = by.get(String(r.lr)); return e ? { ...r, pay: e.pay || r.pay, total: e.total } : r; }) };
 }
 const lrPagesFn = (lr, branch) => async inline => lrPages(await liveLR(lr, branch), inline ? await inlineImgs() : undefined);
 
@@ -147,6 +179,22 @@ document.addEventListener('input', e => {
     if (savedEntry) showFinish(); // editing after a save means a new entry: bring the Finish button back
   }
 });
+// E-way bill: fetch the details for the typed number and fill every mapped field (user can still edit)
+async function fetchEwb() {
+  const no = String(data.ewbNo || '').replace(/\D/g, '');
+  if (no.length !== 12) return showToast('Enter the 12-digit e-way bill number first.', true);
+  const b = $('#ewbGo'); b.disabled = true; b.textContent = '…';
+  try {
+    const x = await fetch(window.SUPABASE_URL.replace(/\/$/, '') + '/functions/v1/fetch-ewaybill', { method: 'POST', headers: { apikey: window.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + window.SUPABASE_ANON_KEY, 'Content-Type': 'application/json', 'x-session-token': session.token }, body: JSON.stringify({ ewbNo: no }) });
+    const j = await x.json().catch(() => ({})); if (!x.ok) throw new Error(j.error || 'Request failed');
+    const f = j.fields || {}; let n = 0;
+    for (const k of Object.keys(f)) if (f[k] !== undefined && f[k] !== null && String(f[k]).trim() !== '') { data[k] = String(f[k]); n++; }
+    data.ewbNo = no; renderForm(); if (savedEntry) showFinish();
+    showToast(n ? 'E-way bill details filled in — please check them.' : 'No details came back for this number.', !n);
+  } catch (e) { showToast('E-way bill: ' + e.message, true); const g = $('#ewbGo'); if (g) { g.disabled = false; g.textContent = 'Submit'; } }
+}
+document.addEventListener('click', e => { if (e.target.id === 'ewbGo') fetchEwb(); });
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'ewbNo') { e.preventDefault(); fetchEwb(); } });
 // After a successful save the Finish button is replaced by View / Download PDF / Print for that entry.
 let savedEntry = null;
 function showFinish() { savedEntry = null; $('#doneBtns').classList.add('hidden'); const b = $('#nextBtn'); b.classList.remove('hidden', 'working'); b.disabled = false; b.textContent = 'Finish entry'; }
@@ -155,16 +203,32 @@ $('#entryForm').addEventListener('submit', async e => {
   const btn = $('#nextBtn'); btn.disabled = true; btn.classList.add('working'); btn.textContent = 'Saving…';
   try {
     data.printedAt = nowStamp(); await store.save(data);
-    savedEntry = { ...data }; warmP = null; // a new entry exists: drop the prefetched list
+    savedEntry = { ...data };
     btn.classList.add('hidden'); $('#doneBtns').classList.remove('hidden');
     showToast('Entry saved');
+    if (normPhone(savedEntry.consignorPhone).length === 10) sendWhatsApp(savedEntry, true);
   } catch (err) {
-    err.message === 'DUPLICATE' ? showToast('This entry already exists — it was not saved again.', true) : showToast('Save failed: ' + err.message, true);
+    err.message === 'DUPLICATE' ? showToast(`GC number ${String(data.gc || '').trim()} is already saved in this branch — it was not saved again.`, true) : showToast('Save failed: ' + err.message, true);
     showFinish();
   }
 });
 $('#doneView').addEventListener('click', () => showDoc('GC ' + savedEntry.gc, 'Saved receipt.', receiptPagesFn(savedEntry), `GC-${savedEntry.gc}`));
 $('#donePdf').addEventListener('click', () => receiptPDF(rd(savedEntry), `GC-${savedEntry.gc}.pdf`).catch(e => showToast(e.message, true)));
+// Send the GC PDF to the consignor's WhatsApp through the send-whatsapp edge function
+async function sendWhatsApp(d, auto) {
+  const b = $('#doneWa'); if (b) { b.disabled = true; b.textContent = 'Sending…'; }
+  try {
+    const x = await fetch(window.SUPABASE_URL.replace(/\/$/, '') + '/functions/v1/send-whatsapp', { method: 'POST', headers: { apikey: window.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + window.SUPABASE_ANON_KEY, 'Content-Type': 'application/json', 'x-session-token': session.token },
+      body: JSON.stringify({ phone: d.consignorPhone, pdf: await receiptPdfBase64(rd(d)), gc: d.gc, consignor: d.consignor, from: d.from, to: d.to }) });
+    const j = await x.json().catch(() => ({})); if (!x.ok) throw new Error(j.error || 'Request failed');
+    showToast('GC sent to consignor on WhatsApp');
+  } catch (e) { showToast((auto ? 'Saved, but WhatsApp failed: ' : 'WhatsApp failed: ') + e.message, true); }
+  if (b) { b.disabled = false; b.textContent = 'Send on WhatsApp'; }
+}
+$('#doneWa').addEventListener('click', () => {
+  if (normPhone(savedEntry.consignorPhone).length !== 10) return showToast('Add a 10-digit consignor WhatsApp number to the entry first.', true);
+  sendWhatsApp(savedEntry, false);
+});
 $('#donePrint').addEventListener('click', () => receiptPrint(rd(savedEntry)));
 function newEntry() { data = { ...defaults }; renderForm(); showFinish(); show('new'); }
 $('#newEntryBtn').addEventListener('click', () => { newEntry(); showToast('Started a new entry'); });
@@ -176,25 +240,29 @@ function show(v) {
 }
 $('#navNew').addEventListener('click', () => show('new'));
 let entries = [], lrs = [], inwards = [], slips = [], tab = 'entries';
+let entTotal = 0, lrMore = false, inMore = false, slipMore = false;
 const actions = `<button type="button" class="btn-secondary mini" data-a="view">View</button> <button type="button" class="btn-secondary mini" data-a="pdf">PDF</button> <button type="button" class="btn-secondary mini" data-a="print">Print</button>`;
-async function loadEntries() {
-  entries = await store.list();
+const moreRow = (more, cols) => more ? `<tr class="more-row"><td colspan="${cols}"><button type="button" class="btn-secondary mini" data-more="1">Show more</button></td></tr>` : '';
+// a later request replaces an earlier one still on its way (fast typing in the search box)
+let entSeq = 0;
+async function loadEntries(append) {
+  const my = ++entSeq;
+  const res = await store.page({ q: $('#gcSearch').value.trim(), pay: $('#gcPay').value, sort: $('#gcSort').value, offset: append ? entries.length : 0 });
+  if (my !== entSeq) return;
+  entries = append ? entries.concat(res.rows) : res.rows; entTotal = res.total;
   renderEntries();
 }
 let viewList = [];
-const natCmp = (a, b) => String(a ?? '').localeCompare(String(b ?? ''), undefined, { numeric: true, sensitivity: 'base' });
-const dateCmp = (a, b) => String(a.entry_date || '').localeCompare(String(b.entry_date || '')) || String(a.created_at).localeCompare(String(b.created_at));
 function renderEntries() {
-  const q = $('#gcSearch').value.trim().toLowerCase(), pay = $('#gcPay').value, sort = $('#gcSort').value;
-  viewList = entries.filter(e => (!q || String(e.gc_no || '').toLowerCase().includes(q)) && (!pay || (e.data && e.data.payType) === pay));
-  const by = { gcAsc: (a, b) => natCmp(a.gc_no, b.gc_no), gcDesc: (a, b) => natCmp(b.gc_no, a.gc_no), dateDesc: (a, b) => dateCmp(b, a), dateAsc: dateCmp }[sort];
-  if (by) viewList.sort(by);
-  $('#gcCount').textContent = viewList.length === entries.length ? `${entries.length} entries` : `${viewList.length} of ${entries.length} entries`;
-  $('#rows').innerHTML = viewList.length ? viewList.map((e, i) => `<tr class="row" data-i="${i}"><td class="adm">${esc(bname(e.branch_id))}</td><td>${esc(e.gc_no)}</td><td>${esc(e.entry_date)}</td><td>${esc(e.from_city)}</td><td>${esc(e.to_city)}</td><td>${esc(e.consignor)}</td><td>${esc(e.consignee)}</td><td>${esc(e.data && e.data.payType)}</td><td>${fmt(e.total)}</td><td>${new Date(e.created_at).toLocaleString('en-IN')}</td><td>${actions}</td></tr>`).join('') : `<tr><td colspan="11">${entries.length ? 'No matching entries.' : 'No entries yet.'}</td></tr>`;
+  viewList = entries;
+  const filtered = $('#gcSearch').value.trim() || $('#gcPay').value;
+  $('#gcCount').textContent = `${entries.length < entTotal ? `Showing ${entries.length.toLocaleString('en-IN')} of ` : ''}${entTotal.toLocaleString('en-IN')} ${filtered ? 'matching ' : ''}entries`;
+  $('#rows').innerHTML = (viewList.length ? viewList.map((e, i) => `<tr class="row" data-i="${i}"><td class="adm">${esc(bname(e.branch_id))}</td><td>${esc(e.gc_no)}</td><td>${esc(e.entry_date)}</td><td>${esc(e.from_city)}</td><td>${esc(e.to_city)}</td><td>${esc(e.consignor)}</td><td>${esc(e.consignee)}</td><td>${esc(e.data && e.data.payType)}</td><td>${fmt(e.total)}</td><td>${new Date(e.created_at).toLocaleString('en-IN')}</td><td>${actions}</td></tr>`).join('') : `<tr><td colspan="11">${filtered ? 'No matching entries.' : 'No entries yet.'}</td></tr>`) + moreRow(entries.length < entTotal, 11);
 }
-async function loadLRs() {
-  lrs = await lrStore.list();
-  $('#lrRows').innerHTML = lrs.length ? lrs.map((l, i) => `<tr class="row" data-i="${i}"><td class="adm">${esc(bname(l.branch_id))}</td><td>${esc(l.memo_no)}</td><td>${esc(dmy(l.lr_date))}</td><td title="${esc(l.data.from)}">${esc(cities3(l.data.from))}</td><td title="${esc(l.data.to)}">${esc(cities3(l.data.to))}</td><td>${(l.gc_numbers || []).length}</td><td>${esc(l.data.truckNo)}</td><td>${new Date(l.created_at).toLocaleString('en-IN')}</td><td>${actions}</td></tr>`).join('') : '<tr><td colspan="9">No reports yet. Use Create New LR.</td></tr>';
+async function loadLRs(append) {
+  const res = await lrStore.page(append ? lrs.length : 0);
+  lrs = append ? lrs.concat(res.rows) : res.rows; lrMore = res.more;
+  $('#lrRows').innerHTML = (lrs.length ? lrs.map((l, i) => `<tr class="row" data-i="${i}"><td class="adm">${esc(bname(l.branch_id))}</td><td>${esc(l.memo_no)}</td><td>${esc(dmy(l.lr_date))}</td><td title="${esc(l.from)}">${esc(cities3(l.from))}</td><td title="${esc(l.to)}">${esc(cities3(l.to))}</td><td>${(l.gc_numbers || []).length}</td><td>${esc(l.truckNo)}</td><td>${new Date(l.created_at).toLocaleString('en-IN')}</td><td>${actions}</td></tr>`).join('') : '<tr><td colspan="9">No reports yet. Use Create New LR.</td></tr>') + moreRow(lrMore, 9);
 }
 function setTab(t) {
   tab = t;
@@ -204,28 +272,31 @@ function setTab(t) {
 async function loadDash() { try { await { entries: loadEntries, lr: loadLRs, in: loadInward, slip: loadSlips, acc: loadAcc }[tab](); } catch (err) { showToast(err.message, true); } }
 $('#navDash').addEventListener('click', () => { show('dash'); $('#mode').textContent = scopeLabel(); loadDash(); });
 $('#tabEntries').addEventListener('click', () => { setTab('entries'); loadDash(); });
-$('#tabLR').addEventListener('click', () => { setTab('lr'); loadDash(); warm(); });
+$('#tabLR').addEventListener('click', () => { setTab('lr'); loadDash(); });
 $('#tabIn').addEventListener('click', () => { setTab('in'); loadDash(); });
 $('#tabSlip').addEventListener('click', () => { setTab('slip'); loadDash(); });
 $('#tabAcc').addEventListener('click', () => { setTab('acc'); loadDash(); });
 
 // ---- ACCOUNTING: totals for the branch in view (admin: all branches or the one picked; employee: own branch) ----
-let accData = { e: [], s: [], w: [] };
+// the database adds up the totals per branch; only those few numbers come back
+let accRows = [], accSeq = 0;
 async function loadAcc() {
-  const [e, s, w] = await Promise.all([store.list(), slipStore.list(), inwardStore.list()]);
-  entries = e; accData = { e, s, w }; renderAcc();
+  const my = ++accSeq;
+  let rows; try { rows = await rpc('acc_totals', { p_branch: curBranch() || null, p_from: $('#accFrom').value || null, p_to: $('#accTo').value || null }); }
+  catch (e) { throw new Error(isMissing(e.message) ? SETUP_MSG : e.message); }
+  if (my !== accSeq) return;
+  accRows = rows || []; renderAcc();
 }
 function renderAcc() {
   const from = $('#accFrom').value, to = $('#accTo').value, n = v => parseFloat(v) || 0, rs = v => '\u20B9 ' + fmt(v);
-  const inR = d => (!from || (d && d >= from)) && (!to || (d && d <= to));
-  const E = accData.e.filter(e => inR(e.entry_date)), S = accData.s.filter(s => inR(s.slip_date)), W = accData.w.filter(w => inR(String(w.created_at).slice(0, 10)));
   const sumE = list => {
-    const t = { count: list.length, total: 0, freight: 0, bc: 0, door: 0, handling: 0, other: 0, tax: 0, pay: { 'Paid': 0, 'To Pay': 0, 'To be Billed': 0 } };
-    list.forEach(e => { const d = e.data || {}; t.total += n(e.total); t.freight += n(d.freight); t.bc += n(d.bc); t.door += n(d.doorDelivery); t.handling += n(d.handling); t.other += n(d.other); t.tax += n(d.sgst) + n(d.cgst); if (d.payType in t.pay) t.pay[d.payType] += n(e.total); });
+    const t = { count: 0, total: 0, freight: 0, bc: 0, door: 0, handling: 0, other: 0, tax: 0, pay: { 'Paid': 0, 'To Pay': 0, 'To be Billed': 0 }, slips: 0, slipTotal: 0, recv: 0, recvValue: 0 };
+    list.forEach(r => { t.count += n(r.n); t.total += n(r.total); t.freight += n(r.freight); t.bc += n(r.bc); t.door += n(r.door); t.handling += n(r.handling); t.other += n(r.other); t.tax += n(r.tax);
+      t.pay['Paid'] += n(r.paid); t.pay['To Pay'] += n(r.topay); t.pay['To be Billed'] += n(r.billed); t.slips += n(r.slips); t.slipTotal += n(r.slipTotal); t.recv += n(r.recv); t.recvValue += n(r.recvValue); });
     return t;
   };
-  const t = sumE(E), slipTotal = S.reduce((a, s) => a + n(s.total), 0), grand = t.total + slipTotal;
-  const byGc = new Map(accData.e.map(e => [e.branch_id + '|' + e.gc_no, e])), recvValue = W.reduce((a, w) => a + n((byGc.get(w.branch_id + '|' + w.gc_no) || {}).total), 0);
+  const t = sumE(accRows), slipTotal = t.slipTotal, grand = t.total + slipTotal, recvValue = t.recvValue;
+  const S = { length: t.slips }, W = { length: t.recv };
   $('#accScope').textContent = scopeLabel() + (from || to ? ' \u00B7 ' + (from || '\u2026') + ' to ' + (to || '\u2026') : '');
   const card = (l, v, big) => `<div class="acc-card ${big ? 'big' : ''}"><small>${l}</small><b>${v}</b></div>`;
   const row = (l, v) => `<tr><td>${l}</td><td class="num">${rs(v)}</td></tr>`;
@@ -233,13 +304,21 @@ function renderAcc() {
     <div class="acc-grid"><div class="card dash" style="padding:18px"><h3>By pay type</h3><table><tbody>${Object.entries(t.pay).map(([k, v]) => row(esc(k), v)).join('')}<tr class="tot"><td>Total</td><td class="num">${rs(t.total)}</td></tr></tbody></table></div>
     <div class="card dash" style="padding:18px"><h3>GC charges breakdown</h3><table><tbody>${row('Freight', t.freight)}${row('BC', t.bc)}${row('Door delivery', t.door)}${row('Handling', t.handling)}${row('Other', t.other)}${row('SGST + CGST', t.tax)}<tr class="tot"><td>Total</td><td class="num">${rs(t.total)}</td></tr></tbody></table></div></div>`;
   if (isAdmin() && !scopeBranch) {
-    const ids = [...new Set([...branches.map(b => b.id), ...E.map(e => e.branch_id), ...S.map(s => s.branch_id)])];
-    html += `<h3 class="acc-h">By branch</h3><div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th>Branch</th><th class="num">GCs</th><th class="num">GC charges</th><th class="num">Slips</th><th class="num">Slip charges</th><th class="num">Total</th></tr></thead><tbody>${ids.map(id => { const bt = sumE(E.filter(e => e.branch_id === id)), bs = S.filter(s => s.branch_id === id), st = bs.reduce((a, s) => a + n(s.total), 0); return `<tr><td><b>${esc(bname(id))}</b></td><td class="num">${bt.count}</td><td class="num">${fmt(bt.total)}</td><td class="num">${bs.length}</td><td class="num">${fmt(st)}</td><td class="num"><b>${fmt(bt.total + st)}</b></td></tr>`; }).join('')}<tr class="tot"><td>All branches</td><td class="num">${t.count}</td><td class="num">${fmt(t.total)}</td><td class="num">${S.length}</td><td class="num">${fmt(slipTotal)}</td><td class="num">${fmt(grand)}</td></tr></tbody></table></div>`;
+    const ids = [...new Set([...branches.map(b => b.id), ...accRows.map(r => r.branch_id)])];
+    html += `<h3 class="acc-h">By branch</h3><div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th>Branch</th><th class="num">GCs</th><th class="num">GC charges</th><th class="num">Slips</th><th class="num">Slip charges</th><th class="num">Total</th></tr></thead><tbody>${ids.map(id => { const bt = sumE(accRows.filter(r => r.branch_id === id)); return `<tr><td><b>${esc(bname(id))}</b></td><td class="num">${bt.count}</td><td class="num">${fmt(bt.total)}</td><td class="num">${bt.slips}</td><td class="num">${fmt(bt.slipTotal)}</td><td class="num"><b>${fmt(bt.total + bt.slipTotal)}</b></td></tr>`; }).join('')}<tr class="tot"><td>All branches</td><td class="num">${t.count}</td><td class="num">${fmt(t.total)}</td><td class="num">${S.length}</td><td class="num">${fmt(slipTotal)}</td><td class="num">${fmt(grand)}</td></tr></tbody></table></div>`;
   }
   $('#accBody').innerHTML = html;
 }
-$('#accFrom').addEventListener('change', renderAcc); $('#accTo').addEventListener('change', renderAcc);
-$('#accClear').addEventListener('click', () => { $('#accFrom').value = ''; $('#accTo').value = ''; renderAcc(); });
+const accReload = () => loadAcc().catch(err => showToast(err.message, true));
+$('#accFrom').addEventListener('change', accReload); $('#accTo').addEventListener('change', accReload);
+$('#accClear').addEventListener('click', () => { $('#accFrom').value = ''; $('#accTo').value = ''; accReload(); });
+// "Show more" under a list reads its next page
+const moreBtn = (sel, load) => $(sel).addEventListener('click', async e => {
+  const b = e.target.closest('[data-more]'); if (!b) return;
+  b.disabled = true; b.textContent = 'Loading…';
+  try { await load(true); } catch (err) { showToast(err.message, true); b.disabled = false; b.textContent = 'Show more'; }
+});
+moreBtn('#rows', loadEntries); moreBtn('#lrRows', loadLRs); moreBtn('#inRows', p => loadInward(p)); moreBtn('#slipRows', p => loadSlips(p));
 $('#rows').addEventListener('click', async e => {
   const tr = e.target.closest('tr.row'); if (!tr) return; const row = viewList[tr.dataset.i], a = e.target.dataset.a;
   if (a === 'pdf') return receiptPDF(rd(row.data, row.branch_id), `GC-${row.gc_no}.pdf`);
@@ -249,23 +328,23 @@ $('#rows').addEventListener('click', async e => {
 
 // ---- LR (lorry receipt) ----
 // Picker built for hundreds of GCs: checkbox list, search, Shift-click ranges, select-all-shown, selected-only filter.
-let pool = [];
-// entries are fetched ahead of time (when the REPORT tab opens) so the Create LR window has them ready
-let warmP = null, warmAt = 0;
-function warm() { if (!warmP || Date.now() - warmAt > 30000) { warmAt = Date.now(); warmP = Promise.all([store.list().catch(() => null), lrStore.memoNos().catch(() => null)]); } return warmP; }
+// It lists the branch's newest GCs; typing searches all of the branch's GCs in the database.
+// Only a few columns are read for the list; the full entries are read for the GCs actually picked.
+const CAP = 500, PICK_LR = 'id,gc_no,entry_date,from_city,to_city,consignor,consignee';
 async function openCreateLR() {
   let lrBranch; try { lrBranch = needBranch(); } catch (err) { showToast(err.message, true); return; }
   lrBox.innerHTML = '<h3>Create new LR</h3><p class="sub">Loading your GC entries…</p><div class="pk-note">Loading…</div>';
   openModal(true);
-  let memoNo;
-  try {
-    const [cached, memos] = await warm();
-    pool = cached || await store.list(); memoNo = lrStore.nextMemo(memos || await lrStore.memoNos());
-  } catch (err) { closeModal(); showToast(err.message, true); return; }
-  const today = new Date().toISOString().slice(0, 10), CAP = 2000;
-  const order = [];            // pool indexes in the order they were selected (= row order on the sheet)
+  let memoNo, recent;
+  try { [recent, memoNo] = await Promise.all([store.search(lrBranch, '', CAP, PICK_LR), lrStore.nextMemo()]); }
+  catch (err) { closeModal(); showToast(err.message, true); return; }
+  const today = new Date().toISOString().slice(0, 10);
+  const byId = new Map();      // every GC seen in this window, by entry id
+  const remember = list => list.map(e => { byId.set(e.id, e); return e.id; });
+  const recentIds = remember(recent);
+  const order = [];            // entry ids in the order they were selected (= row order on the sheet)
   const sel = new Set();
-  let shown = [], last = -1;   // currently listed pool indexes, last clicked position in `shown`
+  let shown = [], last = -1, found = recentIds, seq = 0, timer;   // listed ids, last clicked position in `shown`, ids from the latest search
   lrBox.innerHTML = `<h3>Create new LR</h3><p class="sub">Memo No. ${esc(memoNo)}. Tick the GC numbers to include. Shift-click selects a range. Every ${LR_ROWS} GCs make one page.</p>
     <div class="pk-bar"><input type="text" id="lrSearch" placeholder="Search GC number, consignor, consignee or city" autocomplete="off">
       <button type="button" class="btn-secondary mini" id="pkAll">Select all shown</button><button type="button" class="btn-secondary mini" id="pkNone">Clear</button>
@@ -277,24 +356,34 @@ async function openCreateLR() {
     <div class="modal-actions sticky"><span class="pk-count" id="pkCount"></span><button type="button" class="btn-secondary" id="lrCancel">Cancel</button><button type="button" class="btn-primary" id="lrCreate">Create LR</button></div>`;
   openModal(true);
   const list = $('#pkList'), search = $('#lrSearch');
-  const line = i => { const e = pool[i]; return `<div class="pk-row" data-i="${i}"><input type="checkbox" tabindex="-1"><span class="g">${esc(e.gc_no)}</span><span>${esc(e.from_city)} &rarr; ${esc(e.to_city)}</span><span>${esc(e.consignor)}</span><span>${esc(e.consignee)}</span><span class="d">${esc(dmy(e.entry_date))}</span></div>`; };
+  const line = id => { const e = byId.get(id); return `<div class="pk-row" data-i="${id}"><input type="checkbox" tabindex="-1"><span class="g">${esc(e.gc_no)}</span><span>${esc(e.from_city)} &rarr; ${esc(e.to_city)}</span><span>${esc(e.consignor)}</span><span>${esc(e.consignee)}</span><span class="d">${esc(dmy(e.entry_date))}</span></div>`; };
   function status() {
     const n = order.length, pages = Math.max(1, Math.ceil(n / LR_ROWS));
-    $('#pkStatus').textContent = `${n} selected of ${pool.length} GCs${n ? ` · ${pages} page${pages > 1 ? 's' : ''}` : ''}`;
+    $('#pkStatus').textContent = `${n} selected${n ? ` · ${pages} page${pages > 1 ? 's' : ''}` : ''}`;
     $('#pkCount').textContent = n ? `${n} GC${n > 1 ? 's' : ''}` : '';
   }
-  function paint() { list.querySelectorAll('.pk-row').forEach(r => { const on = sel.has(+r.dataset.i); r.classList.toggle('on', on); r.firstChild.checked = on; }); status(); }
+  function paint() { list.querySelectorAll('.pk-row[data-i]').forEach(r => { const on = sel.has(+r.dataset.i); r.classList.toggle('on', on); r.firstChild.checked = on; }); status(); }
   function render() {
     const q = search.value.trim().toLowerCase(), only = $('#pkOnly').checked;
-    const all = pool.map((_, i) => i).filter(i => {
-      const e = pool[i]; if (only && !sel.has(i)) return false;
-      return !q || [e.gc_no, e.consignor, e.consignee, e.from_city, e.to_city].some(v => String(v || '').toLowerCase().includes(q));
-    });
+    const all = only ? order.filter(id => { const e = byId.get(id); return !q || [e.gc_no, e.consignor, e.consignee, e.from_city, e.to_city].some(v => String(v || '').toLowerCase().includes(q)); }) : found;
     shown = all.slice(0, CAP); last = -1;
+    const note = !only && found.length >= CAP ? `<div class="pk-note">Showing the newest ${CAP}${q ? ' matches' : ' GCs'}. ${q ? 'Type more of the number or name to narrow it down.' : 'Search to find older GCs.'}</div>` : '';
     list.innerHTML = shown.length
-      ? `<div class="pk-row pk-head"><span></span><span>GC No</span><span>Route</span><span>Consignor</span><span>Consignee</span><span>Date</span></div>` + shown.map(line).join('') + (all.length > CAP ? `<div class="pk-note">Showing the first ${CAP} of ${all.length}. Narrow the search to see the rest.</div>` : '')
-      : `<div class="pk-note">${pool.length ? 'No matching GC numbers' : 'No entries saved yet'}</div>`;
+      ? `<div class="pk-row pk-head"><span></span><span>GC No</span><span>Route</span><span>Consignor</span><span>Consignee</span><span>Date</span></div>` + shown.map(line).join('') + note
+      : `<div class="pk-note">${q || only ? 'No matching GC numbers' : 'No entries saved yet'}</div>`;
     paint();
+  }
+  // typing searches the database (after a short pause); an empty box lists the newest GCs again
+  function onSearch() {
+    clearTimeout(timer);
+    if ($('#pkOnly').checked) return render();
+    const q = search.value.trim();
+    if (!q) { seq++; found = recentIds; return render(); }
+    timer = setTimeout(async () => {
+      const my = ++seq; list.innerHTML = '<div class="pk-note">Searching…</div>';
+      try { const r = await store.search(lrBranch, q, CAP, PICK_LR); if (my !== seq) return; found = remember(r); render(); }
+      catch (err) { if (my === seq) list.innerHTML = `<div class="pk-note">${esc(err.message)}</div>`; }
+    }, 300);
   }
   function setSel(i, on) { if (on && !sel.has(i)) { sel.add(i); order.push(i); } else if (!on && sel.has(i)) { sel.delete(i); order.splice(order.indexOf(i), 1); } }
   list.addEventListener('click', e => {
@@ -304,16 +393,19 @@ async function openCreateLR() {
     else setSel(i, on);
     last = pos; paint();
   });
-  search.addEventListener('input', render);
-  $('#pkOnly').addEventListener('change', render);
+  search.addEventListener('input', onSearch);
+  $('#pkOnly').addEventListener('change', onSearch);
   $('#pkAll').onclick = () => { shown.forEach(i => setSel(i, true)); paint(); };
   $('#pkNone').onclick = () => { sel.clear(); order.length = 0; render(); };
   $('#lrCancel').onclick = closeModal;
   $('#lrCreate').onclick = async () => {
     if (!order.length) { showToast('Pick at least one GC number', true); search.focus(); return; }
-    const lr = lrFromEntries(order.map(i => pool[i]), { memoNo, date: $('#lrDate').value, truckNo: $('#lrTruck').value.trim(), driverName: $('#lrDriver').value.trim() });
     const b = $('#lrCreate'); b.disabled = true; b.textContent = 'Creating…';
-    try { await lrStore.save(lr); warmP = null; await showDoc('LR ' + lr.memoNo + ' created', 'The stamp is left blank to be written by hand.', lrPagesFn(lr, lrBranch), `LR-${lr.memoNo}`); if (tab === 'lr') loadLRs().catch(() => {}); }
+    try {
+      const full = new Map((await store.byIds(order)).map(e => [e.id, e]));
+      if (order.some(id => !full.has(id))) throw new Error('Some picked GCs could not be read. Please try again.');
+      const lr = lrFromEntries(order.map(id => full.get(id)), { memoNo, date: $('#lrDate').value, truckNo: $('#lrTruck').value.trim(), driverName: $('#lrDriver').value.trim() });
+      await lrStore.save(lr); await showDoc('LR ' + lr.memoNo + ' created', 'The stamp is left blank to be written by hand.', lrPagesFn(lr, lrBranch), `LR-${lr.memoNo}`); if (tab === 'lr') loadLRs().catch(() => {}); }
     catch (err) { showToast(err.message, true); b.disabled = false; b.textContent = 'Create LR'; }
   };
   render(); search.focus();
@@ -321,26 +413,43 @@ async function openCreateLR() {
 $('#newLRBtn').addEventListener('click', openCreateLR);
 $('#lrRows').addEventListener('click', async e => {
   const tr = e.target.closest('tr.row'); if (!tr) return; const l = lrs[tr.dataset.i], a = e.target.dataset.a;
-  if (a === 'pdf') return svgToPDF(lrPages(await liveLR(l.data, l.branch_id), await inlineImgs()), `LR-${l.memo_no}.pdf`);
-  if (a === 'print') return svgPrint(lrPages(await liveLR(l.data, l.branch_id), await inlineImgs()), `LR ${l.memo_no}`);
-  showDoc('LR ' + l.memo_no, 'Saved lorry receipt.', lrPagesFn(l.data, l.branch_id), `LR-${l.memo_no}`);
+  try {
+    const d = await lrStore.full(l.id);
+    if (a === 'pdf') return await svgToPDF(lrPages(await liveLR(d, l.branch_id), await inlineImgs()), `LR-${l.memo_no}.pdf`);
+    if (a === 'print') return svgPrint(lrPages(await liveLR(d, l.branch_id), await inlineImgs()), `LR ${l.memo_no}`);
+    await showDoc('LR ' + l.memo_no, 'Saved lorry receipt.', lrPagesFn(d, l.branch_id), `LR-${l.memo_no}`);
+  } catch (err) { showToast(err.message, true); }
 });
 
 // ---- shared: GC search box with a drop-down of matches ----
-function gcSearchBox(input, dd, candidates, onPick) {
+// find(q) searches the database and returns the matching entries (after a short pause in typing)
+function gcSearchBox(input, dd, find, onPick) {
+  let hits = [], seq = 0, timer;
   const draw = () => {
-    const q = input.value.trim().toLowerCase(); if (!q) { dd.innerHTML = ''; return; }
-    const hits = candidates().filter(e => [e.gc_no, e.consignor, e.consignee].some(v => String(v || '').toLowerCase().includes(q))).slice(0, 30);
-    dd.innerHTML = hits.length ? hits.map(e => `<div data-g="${esc(e.gc_no)}"><span><b>${esc(e.gc_no)}</b> <small>${esc(e.consignor)} &rarr; ${esc(e.consignee)}</small></span><small>${esc(e.from_city)} &rarr; ${esc(e.to_city)}</small></div>`).join('') : '<div class="none">No matching GC number</div>';
+    clearTimeout(timer);
+    const q = input.value.trim(); if (!q) { seq++; dd.innerHTML = ''; return; }
+    timer = setTimeout(async () => {
+      const my = ++seq;
+      let r; try { r = await find(q); } catch (err) { if (my === seq) dd.innerHTML = `<div class="none">${esc(err.message)}</div>`; return; }
+      if (my !== seq) return;
+      hits = r.slice(0, 30);
+      dd.innerHTML = hits.length ? hits.map((e, i) => `<div data-h="${i}"><span><b>${esc(e.gc_no)}</b> <small>${esc(e.consignor)} &rarr; ${esc(e.consignee)}</small></span><small>${esc(e.from_city)} &rarr; ${esc(e.to_city)}</small></div>`).join('') : '<div class="none">No matching GC number</div>';
+    }, 250);
   };
   input.addEventListener('input', draw); input.addEventListener('focus', draw);
-  dd.addEventListener('click', ev => { const r = ev.target.closest('[data-g]'); if (!r) return; onPick(r.dataset.g); input.value = ''; dd.innerHTML = ''; input.focus(); });
+  dd.addEventListener('click', ev => { const r = ev.target.closest('[data-h]'); if (!r) return; onPick(hits[+r.dataset.h]); input.value = ''; dd.innerHTML = ''; input.focus(); });
 }
-const entryOf = (gc, branch) => entries.find(e => String(e.gc_no) === String(gc) && (branch == null || e.branch_id === branch));
+// GC entries behind the inward rows on screen, by branch + GC number
+let inEntries = new Map();
+const entryOf = (gc, branch) => inEntries.get(branch + '|' + gc);
 
 // ---- INWARD ----
-async function loadInward() {
-  [entries, inwards] = await Promise.all([store.list(), inwardStore.list()]);
+async function loadInward(append) {
+  const res = await inwardStore.page(append ? inwards.length : 0);
+  const ents = res.rows.length ? await store.byGcs(curBranch(), res.rows.map(w => w.gc_no)) : [];
+  if (!append) inEntries = new Map();
+  ents.forEach(e => inEntries.set(e.branch_id + '|' + e.gc_no, e));
+  inwards = append ? inwards.concat(res.rows) : res.rows; inMore = res.more;
   renderInward();
 }
 function renderInward() {
@@ -349,7 +458,7 @@ function renderInward() {
     return `<tr data-i="${i}"><td class="adm">${esc(bname(w.branch_id))}</td><td>${esc(w.gc_no)}</td><td>${esc(dmy(e.entry_date))}</td><td>${esc(e.from_city)}</td><td>${esc(e.to_city)}</td><td>${esc(e.consignor)}</td><td>${esc(e.consignee)}</td>
       <td><select class="pay-sel" data-orig="${esc(pay)}">${PAY.map(p => `<option ${p === pay ? 'selected' : ''}>${p}</option>`).join('')}</select><button type="button" class="btn-primary save-pay hidden">Save</button></td>
       <td>${e.total != null ? fmt(e.total) : ''}</td><td class="rcv">&#10003; Received<br><small style="color:var(--muted);font-weight:400">${new Date(w.created_at).toLocaleDateString('en-IN')}</small></td></tr>`;
-  }).join('') : '<tr><td colspan="10">Nothing received yet. Use RECEIVED to add GC numbers.</td></tr>';
+  }).join('') + moreRow(inMore, 10) : '<tr><td colspan="10">Nothing received yet. Use RECEIVED to add GC numbers.</td></tr>';
 }
 $('#inRows').addEventListener('change', e => { const s = e.target.closest('.pay-sel'); if (s) s.parentElement.querySelector('.save-pay').classList.toggle('hidden', s.value === s.dataset.orig); });
 $('#inRows').addEventListener('click', async e => {
@@ -362,18 +471,23 @@ $('#inRows').addEventListener('click', async e => {
   b.disabled = false; b.textContent = 'Save';
 });
 async function openReceived() {
-  try { needBranch(); } catch (err) { showToast(err.message, true); return; }
-  lrBox.innerHTML = '<h3>Received</h3><p class="sub">Loading…</p>'; openModal(false);
-  let have;
-  try { [entries, inwards] = await Promise.all([store.list(), inwardStore.list()]); have = new Set(inwards.map(w => String(w.gc_no))); } catch (err) { closeModal(); showToast(err.message, true); return; }
+  let branch; try { branch = needBranch(); } catch (err) { showToast(err.message, true); return; }
+  openModal(false);
   const chosen = [];
+  // the branch's GCs matching the search that are not received yet and not already picked
+  const find = async q => {
+    const hits = (await store.search(branch, q, 60)).filter(e => !chosen.includes(String(e.gc_no)));
+    if (!hits.length) return hits;
+    const have = new Set((await getJSON(`inwards?select=gc_no&branch_id=eq.${branch}&gc_no=${inList(hits.map(e => e.gc_no))}`)).map(w => String(w.gc_no)));
+    return hits.filter(e => !have.has(String(e.gc_no)));
+  };
   lrBox.innerHTML = `<h3>Received</h3><p class="sub">Search a GC number, pick it from the list, then press ADD.</p>
     <div class="picker"><input type="text" id="rcvSearch" placeholder="Search GC number, consignor or consignee" autocomplete="off"><div class="dd" id="rcvDd"></div></div>
     <div class="chips" id="rcvChips"></div>
     <div class="modal-actions"><button type="button" class="btn-secondary" id="rcvCancel">Cancel</button><button type="button" class="btn-primary" id="rcvAdd">ADD</button></div>`;
   const chips = $('#rcvChips');
   const drawChips = () => { chips.innerHTML = chosen.map((g, i) => `<span class="chip">${esc(g)}<button type="button" data-x="${i}">&times;</button></span>`).join(''); };
-  gcSearchBox($('#rcvSearch'), $('#rcvDd'), () => entries.filter(e => !have.has(String(e.gc_no)) && !chosen.includes(String(e.gc_no))), g => { chosen.push(String(g)); drawChips(); });
+  gcSearchBox($('#rcvSearch'), $('#rcvDd'), find, e => { if (!chosen.includes(String(e.gc_no))) chosen.push(String(e.gc_no)); drawChips(); });
   chips.onclick = ev => { const x = ev.target.dataset.x; if (x != null) { chosen.splice(+x, 1); drawChips(); } };
   $('#rcvCancel').onclick = closeModal; $('#rcvSearch').focus();
   $('#rcvAdd').onclick = async () => {
@@ -386,15 +500,16 @@ async function openReceived() {
 $('#receivedBtn').addEventListener('click', openReceived);
 
 // ---- DELIVERY SLIP ----
-async function loadSlips() {
-  slips = await slipStore.list();
-  $('#slipRows').innerHTML = slips.length ? slips.map(s => `<tr><td class="adm">${esc(bname(s.branch_id))}</td><td>${esc(s.slip_no)}</td><td>${esc(dmy(s.slip_date))}</td><td>${(s.gc_numbers || []).length}</td><td>${fmt(s.total)}</td><td>${new Date(s.created_at).toLocaleString('en-IN')}</td></tr>`).join('') : '<tr><td colspan="6">No delivery slips yet. Use Create Delivery slip.</td></tr>';
+async function loadSlips(append) {
+  const res = await slipStore.page(append ? slips.length : 0);
+  slips = append ? slips.concat(res.rows) : res.rows; slipMore = res.more;
+  $('#slipRows').innerHTML = slips.length ? slips.map(s => `<tr><td class="adm">${esc(bname(s.branch_id))}</td><td>${esc(s.slip_no)}</td><td>${esc(dmy(s.slip_date))}</td><td>${(s.gc_numbers || []).length}</td><td>${fmt(s.total)}</td><td>${new Date(s.created_at).toLocaleString('en-IN')}</td></tr>`).join('') + moreRow(slipMore, 6) : '<tr><td colspan="6">No delivery slips yet. Use Create Delivery slip.</td></tr>';
 }
 async function openCreateSlip() {
-  try { needBranch(); } catch (err) { showToast(err.message, true); return; }
+  let branch; try { branch = needBranch(); } catch (err) { showToast(err.message, true); return; }
   lrBox.innerHTML = '<h3>Create Delivery slip</h3><p class="sub">Loading…</p>'; openModal(true);
   let slipNo;
-  try { [entries, slips] = await Promise.all([store.list(), slipStore.list()]); const n = slips.reduce((m, x) => Math.max(m, parseInt(String(x.slip_no || '').replace(/\D/g, '')) || 0), 0) + 1; slipNo = 'DS' + String(n).padStart(3, '0'); } catch (err) { closeModal(); showToast(err.message, true); return; }
+  try { slipNo = await slipStore.nextNo(); } catch (err) { closeModal(); showToast(slipStore.missing(err.message), true); return; }
   const rows = []; // { gc, units, door, other }
   lrBox.innerHTML = `<h3>Create Delivery slip</h3><p class="sub">Slip No. ${esc(slipNo)}. Enter GC numbers; each one is added below with its charges. Total = door delivery &times; units + other.</p>
     <div class="picker"><input type="text" id="slSearch" placeholder="Search GC number, consignor or consignee" autocomplete="off"><div class="dd" id="slDd"></div></div>
@@ -406,7 +521,8 @@ async function openCreateSlip() {
     $('#slBody').innerHTML = rows.length ? rows.map((r, i) => `<tr data-i="${i}"><td><b>${esc(r.gc)}</b></td><td>${r.units}</td><td><input type="number" min="0" step="any" data-k="door" value="${esc(r.door)}" placeholder="0"></td><td><input type="number" min="0" step="any" data-k="other" value="${esc(r.other)}" placeholder="0"></td><td class="t">${fmt(tot(r))}</td><td><button type="button" class="x" data-x="${i}">&times;</button></td></tr>`).join('') : '<tr><td colspan="6" style="color:var(--muted)">No GC numbers added yet.</td></tr>';
     sums();
   };
-  gcSearchBox($('#slSearch'), $('#slDd'), () => entries.filter(e => !rows.some(r => r.gc === String(e.gc_no))), g => { const e = entryOf(g); rows.push({ gc: String(g), units: parseFloat(e && e.data.quantity) || 0, door: '', other: '' }); draw(); });
+  gcSearchBox($('#slSearch'), $('#slDd'), async q => (await store.search(branch, q, 60)).filter(e => !rows.some(r => r.gc === String(e.gc_no))),
+    e => { if (rows.some(r => r.gc === String(e.gc_no))) return; rows.push({ gc: String(e.gc_no), units: parseFloat(e.quantity) || 0, door: '', other: '' }); draw(); });
   $('#slBody').addEventListener('input', ev => { const k = ev.target.dataset.k; if (k) { rows[ev.target.closest('tr').dataset.i][k] = ev.target.value; sums(); } });
   $('#slBody').addEventListener('click', ev => { const x = ev.target.dataset.x; if (x != null) { rows.splice(+x, 1); draw(); } });
   $('#slCancel').onclick = closeModal; draw(); $('#slSearch').focus();
@@ -422,9 +538,12 @@ $('#newSlipBtn').addEventListener('click', openCreateSlip);
 
 // report table shows at most 3 cities per cell (full list on hover)
 function cities3(s) { const c = String(s || '').split(', ').filter(Boolean); return c.slice(0, 3).join(', ') + (c.length > 3 ? '…' : ''); }
-$('#gcSearch').addEventListener('input', renderEntries);
-$('#gcSort').addEventListener('change', renderEntries);
-$('#gcPay').addEventListener('change', renderEntries);
+// search, sort and pay-type filter ask the database again (search after a short pause in typing)
+let gcTimer;
+const reloadEntries = () => loadEntries().catch(err => showToast(err.message, true));
+$('#gcSearch').addEventListener('input', () => { clearTimeout(gcTimer); gcTimer = setTimeout(reloadEntries, 300); });
+$('#gcSort').addEventListener('change', reloadEntries);
+$('#gcPay').addEventListener('change', reloadEntries);
 
 // keep the pressed colour visible for a moment after a click
 document.addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.disabled) return; b.classList.add('pressed'); setTimeout(() => b.classList.remove('pressed'), 400); });
@@ -434,7 +553,7 @@ const SESSION_KEY = 'sl_session';
 const normPhone = p => String(p || '').replace(/\D/g, '').slice(-10);
 const scopeLabel = () => isAdmin() ? (scopeBranch ? bname(scopeBranch) : 'All branches') : (session.branch_name || '');
 function signOutLocal(msg) {
-  session = null; scopeBranch = null; branches = []; entries = []; lrs = []; inwards = []; slips = []; warmP = null;
+  session = null; scopeBranch = null; branches = []; entries = []; lrs = []; inwards = []; slips = []; inEntries = new Map(); accRows = [];
   try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
   closeModal(); showLogin(msg);
 }
@@ -495,7 +614,7 @@ function updateEntryHint() {
   $('#entryHint').textContent = b ? `Saving to branch: ${isAdmin() ? bname(b) : session.branch_name}` : 'Choose a branch in the left menu before saving.';
 }
 function setScope(id) {
-  scopeBranch = id || null; fillScope(); warmP = null; updateEntryHint(); $('#mode').textContent = scopeLabel();
+  scopeBranch = id || null; fillScope(); updateEntryHint(); $('#mode').textContent = scopeLabel();
   if (!$('#viewDash').classList.contains('hidden')) loadDash();
 }
 document.querySelectorAll('.scopeSel').forEach(s => s.addEventListener('change', e => setScope(+e.target.value)));

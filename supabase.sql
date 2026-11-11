@@ -1,4 +1,5 @@
--- NOTE: after this file, also run supabase-branches.sql (branches, logins, per-branch security).
+-- NOTE: after this file, also run supabase-branches.sql (branches, logins, per-branch security),
+-- supabase-branch-phones.sql and supabase-scale.sql (one GC number per branch, fast lists and totals).
 -- Run once in Supabase -> SQL Editor
 create table if not exists public.entries (
   id bigint generated always as identity primary key,

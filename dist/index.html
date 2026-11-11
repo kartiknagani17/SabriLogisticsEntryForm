@@ -31,6 +31,8 @@
     .form-card{padding:20px 24px}
     .sect{margin-bottom:20px}.sect:last-of-type{margin-bottom:6px}
     .sect h4{margin:0 0 10px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--orange)}
+    .dash tr.more-row td{text-align:center;border-bottom:0;padding-top:16px}
+    .ewb-row{display:flex;gap:6px}.ewb-row input{min-width:0;flex:1}.ewb-row .mini{flex:none}
     .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:11px 14px}
     .grid .field.w2{grid-column:span 2}
     .field{gap:5px}.field label{font-size:12px}
@@ -126,7 +128,7 @@
         <section class="card form-card">
           <form id="entryForm">
             <div id="fields"></div>
-            <div class="actions"><div class="totalbox">Total<b id="totalOut">0.00</b></div><div><button type="submit" class="btn-primary" id="nextBtn">Finish entry</button><div class="donebtns hidden" id="doneBtns"><button type="button" class="btn-secondary" id="doneView">View</button><button type="button" class="btn-secondary" id="donePdf">Download PDF</button><button type="button" class="btn-secondary" id="donePrint">Print</button></div></div></div>
+            <div class="actions"><div class="totalbox">Total<b id="totalOut">0.00</b></div><div><button type="submit" class="btn-primary" id="nextBtn">Finish entry</button><div class="donebtns hidden" id="doneBtns"><button type="button" class="btn-secondary" id="doneView">View</button><button type="button" class="btn-secondary" id="donePdf">Download PDF</button><button type="button" class="btn-secondary" id="donePrint">Print</button><button type="button" class="btn-secondary" id="doneWa">Send on WhatsApp</button></div></div></div>
           </form>
         </section>
       </div>

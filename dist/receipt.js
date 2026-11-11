@@ -146,20 +146,108 @@ async function inlineImgs() {
   return assetCache;
 }
 
-// svgs: one SVG string or an array of them (one A4 page each)
-async function svgToPDF(svgs, filename) {
-  svgs = [].concat(svgs);
-  const S = svgs.length > 4 ? 2.5 : 4;
-  const doc = new window.jspdf.jsPDF({ unit: 'pt', format: [595, 842] });
-  for (let i = 0; i < svgs.length; i++) {
-    const img = new Image();
-    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgs[i]); });
-    const c = document.createElement('canvas'); c.width = Math.round(595 * S); c.height = Math.round(842 * S);
-    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
-    if (i) doc.addPage([595, 842]);
-    doc.addImage(c.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 595, 842);
-    await new Promise(r => setTimeout(r)); // let the browser breathe between big pages
+// ---- PDF ----
+// Each page drawing (SVG) is copied into the PDF as real text, lines and boxes, at exactly the same positions,
+// with the PDF's built-in Helvetica (same letter widths as Arial). That makes a PDF ~50 KB instead of a ~1 MB
+// photo of the page. Pictures (logo, QR) keep the resolution the photo had: 4 pixels per point, JPEG 92%.
+// A page with characters Helvetica cannot show (e.g. Gujarati) is still made as a photo, as before.
+const PDF_PX = 4;
+const loadImg = src => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+const svgURL = s => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s);
+// the characters Helvetica has in a PDF (Windows-1252)
+const PDF_CHARS = /^[\x20-\x7e\xa0-\xff–—‘’‚“”„†‡•…‰‹›€™ŒœŠšŸŽžƒˆ˜]*$/;
+const pdfColor = c => { c = String(c || '#000').trim(); return /^#[0-9a-f]{3}$/i.test(c) ? '#' + [...c.slice(1)].map(h => h + h).join('') : c; };
+
+// the old way, kept for pages Helvetica cannot show: the whole page as one picture
+async function rasterPage(doc, svg, S) {
+  const img = await loadImg(svgURL(svg));
+  const c = document.createElement('canvas'); c.width = Math.round(595 * S); c.height = Math.round(842 * S);
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+  doc.addImage(c.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 595, 842);
+}
+
+// a picture placed the way the SVG places it, resampled to 4 px per point on white (as the photo did)
+async function pdfImage(doc, el, tx, ty, cache) {
+  const href = el.getAttribute('href') || el.getAttribute('xlink:href'), x = +el.getAttribute('x') + tx, y = +el.getAttribute('y') + ty;
+  let w = +el.getAttribute('width'), h = +el.getAttribute('height'), dx = x, dy = y;
+  const img = await loadImg(href);
+  if ((el.getAttribute('preserveAspectRatio') || 'xMidYMid meet') !== 'none') {
+    const s = Math.min(w / img.naturalWidth, h / img.naturalHeight), dw = img.naturalWidth * s, dh = img.naturalHeight * s;
+    dx = x + (w - dw) / 2; dy = y + (h - dh) / 2; w = dw; h = dh;
   }
+  const key = href.length + '|' + href.slice(-40) + '|' + w.toFixed(2) + 'x' + h.toFixed(2);
+  if (!cache[key]) {
+    const c = document.createElement('canvas'); c.width = Math.round(w * PDF_PX); c.height = Math.round(h * PDF_PX);
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+    cache[key] = c.toDataURL('image/jpeg', 0.92);
+  }
+  doc.addImage(cache[key], 'JPEG', dx, dy, w, h, key); // same alias = stored once (the GC has 3 copies)
+}
+
+// text squeezed to a set length in a font only some computers have (the LR heading): drawn by the browser
+// exactly as before, as a small transparent picture of just that text
+async function pdfTextPicture(doc, el, rootFont, tx, ty) {
+  const x = +el.getAttribute('x'), y = +el.getAttribute('y'), fs = +el.getAttribute('font-size'), len = +el.getAttribute('textLength');
+  const box = [x - fs * 0.2, y - fs * 1.05, len + fs * 0.4, fs * 1.4];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${box.join(' ')}" width="${box[2]}" height="${box[3]}" font-family="${esc(rootFont)}">${el.outerHTML}</svg>`;
+  const img = await loadImg(svgURL(svg));
+  const c = document.createElement('canvas'); c.width = Math.round(box[2] * PDF_PX); c.height = Math.round(box[3] * PDF_PX);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  doc.addImage(c.toDataURL('image/png'), 'PNG', box[0] + tx, box[1] + ty, box[2], box[3]);
+}
+
+function pdfText(doc, el, tx, ty) {
+  const fs = +el.getAttribute('font-size'), bold = +el.getAttribute('font-weight') >= 600 || el.getAttribute('font-weight') === 'bold';
+  doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(fs); doc.setTextColor(pdfColor(el.getAttribute('fill')));
+  const str = el.textContent, y = +el.getAttribute('y') + ty, xs = el.getAttribute('x').trim().split(/[\s,]+/).map(Number);
+  if (xs.length > 1) { // every letter has its own position (the GC receipt): place each one there
+    const chars = [...str]; let x = xs[0];
+    chars.forEach((ch, i) => {
+      x = i < xs.length ? xs[i] : x + doc.getTextWidth(chars[i - 1]);
+      if (ch.trim() && ch !== ' ') doc.text(ch, x + tx, y);
+    });
+    return;
+  }
+  const ls = parseFloat(el.getAttribute('letter-spacing')) || 0, anchor = el.getAttribute('text-anchor');
+  const w = doc.getTextWidth(str) + ls * [...str].length;
+  const x0 = xs[0] - (anchor === 'middle' ? w / 2 : anchor === 'end' ? w : 0);
+  doc.text(str, x0 + tx, y, ls ? { charSpace: ls } : undefined);
+}
+
+async function pdfNode(doc, el, tx, ty, ctx) {
+  const n = el.nodeName, a = k => el.getAttribute(k);
+  if (n === 'g') {
+    const m = /translate\(\s*([-\d.]+)[\s,]+([-\d.]+)\s*\)/.exec(a('transform') || '');
+    for (const c of el.children) await pdfNode(doc, c, tx + (m ? +m[1] : 0), ty + (m ? +m[2] : 0), ctx);
+  } else if (n === 'rect') {
+    const fill = a('fill'), stroke = a('stroke'), x = +a('x') + tx, y = +a('y') + ty, w = +a('width'), h = +a('height');
+    if (fill && fill !== 'none') { doc.setFillColor(pdfColor(fill)); doc.rect(x, y, w, h, 'F'); }
+    if (stroke && stroke !== 'none') { doc.setDrawColor(pdfColor(stroke)); doc.setLineWidth(+a('stroke-width') || 1); doc.rect(x, y, w, h, 'S'); }
+  } else if (n === 'line') {
+    doc.setDrawColor(pdfColor(a('stroke'))); doc.setLineWidth(+a('stroke-width') || 1);
+    const dash = (a('stroke-dasharray') || '').trim(); if (dash) doc.setLineDashPattern(dash.split(/[\s,]+/).map(Number), 0);
+    doc.line(+a('x1') + tx, +a('y1') + ty, +a('x2') + tx, +a('y2') + ty);
+    if (dash) doc.setLineDashPattern([], 0);
+  } else if (n === 'text') {
+    if (a('textLength')) await pdfTextPicture(doc, el, ctx.font, tx, ty); else pdfText(doc, el, tx, ty);
+  } else if (n === 'image') await pdfImage(doc, el, tx, ty, ctx.images);
+  else throw new Error('PDF: cannot draw <' + n + '>');
+}
+
+// svgs: one SVG string or an array of them (one A4 page each)
+async function svgToPDF(svgs, filename, asBase64) {
+  svgs = [].concat(svgs);
+  const doc = new window.jspdf.jsPDF({ unit: 'pt', format: [595, 842], compress: true }), images = {};
+  for (let i = 0; i < svgs.length; i++) {
+    if (i) doc.addPage([595, 842]);
+    const root = new DOMParser().parseFromString(svgs[i], 'image/svg+xml').documentElement;
+    const texts = [...root.querySelectorAll('text')].filter(t => !t.getAttribute('textLength'));
+    if (texts.every(t => PDF_CHARS.test(t.textContent))) {
+      for (const el of root.children) await pdfNode(doc, el, 0, 0, { font: root.getAttribute('font-family') || '', images });
+    } else await rasterPage(doc, svgs[i], svgs.length > 4 ? 2.5 : 4);
+    await new Promise(r => setTimeout(r)); // let the browser breathe between pages
+  }
+  if (asBase64) return doc.output('datauristring').split(',')[1];
   doc.save(filename);
 }
 
@@ -172,4 +260,5 @@ function svgPrint(svgs, title) {
 }
 
 async function receiptPDF(d, filename) { return svgToPDF(receiptSVG(d, await inlineImgs()), filename); }
+async function receiptPdfBase64(d) { return svgToPDF(receiptSVG(d, await inlineImgs()), '', true); }
 async function receiptPrint(d) { return svgPrint(receiptSVG(d, await inlineImgs()), `GC ${d.gc}`); }

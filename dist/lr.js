@@ -1,6 +1,6 @@
 // Lorry Receipt (LR) sheet: redrawn as SVG from the photo of the printed form.
 // Hand-written parts of the form (total cartons, stamp) are deliberately left out.
-const LR_RED = '#c8202f';
+const LR_INK = '#000'; // the printed form's colour (lines, labels, heading bar); was red #c8202f
 const LR_ROWS = 20;
 const LR_COLS = [['Destination', 64], ['L.R. No.', 40], ['Consignor', 78], ['Consignee', 104], ['No. of|Article', 38], ['Contains', 68], ['Weight', 44], ['To Pay', 40], ['Paid', 40], ['PM No.', 43]];
 const LR_X0 = 18, LR_Y0 = 196, LR_HEAD = 26, LR_ROW = 27;
@@ -28,7 +28,7 @@ function lrFromEntries(entries, extra) {
 }
 
 function lrSVG(lr, page = 0, pages = 1, imgs = { logo: 'assets/logo.png' }) {
-  const R = LR_RED;
+  const R = LR_INK;
   const text = (x, y, size, str, o = {}) => `<text x="${x}" y="${y}" font-size="${size}" font-weight="${o.b ? 700 : 400}" fill="${o.c || R}"${o.a ? ` text-anchor="${o.a}"` : ''}${o.f ? ` font-family="${o.f}"` : ''}${o.ls ? ` letter-spacing="${o.ls}"` : ''}>${esc(str)}</text>`;
   const line = (x1, y1, x2, y2, w = 0.7) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${R}" stroke-width="${w}"/>`;
   let o = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 595 842" width="595" height="842" font-family="Arial,'Liberation Sans',Helvetica,sans-serif" style="background:#fff"><rect width="595" height="842" fill="#fff"/>`;
