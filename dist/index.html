@@ -103,6 +103,7 @@
     .whoami{color:#fff;font-size:13px;line-height:1.5;margin-bottom:10px}.whoami small{color:#a9c1dc;display:block}.logout{width:100%;padding:9px 12px;font-size:13px;background:transparent;color:#c2d3e6;border:1px solid #3d6595}.logout:hover{background:#c62828;border-color:#c62828;color:#fff}
     .scope{display:grid;gap:6px}.scope label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#a9c1dc}.scope select{background:#fff;padding:9px 10px}
     .emp .adm{display:none!important}
+    .keep-note{display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:14px 18px;margin-bottom:18px;font-size:13px;line-height:1.5}.keep-note>div:first-child{flex:1 1 320px}.keep-act{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .acc-lbl{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px}
     .acc-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:22px}.acc-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:0 8px 24px rgba(21,52,80,.06)}.acc-card small{display:block;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}.acc-card b{font-size:24px}.acc-card.big{background:var(--navy);border-color:var(--navy);color:#fff}.acc-card.big small{color:#a9c1dc}
     .acc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px;margin-bottom:22px}.acc-grid h3,.acc-h{margin:0 0 10px;font-size:16px}.dash td.num,.dash th.num{text-align:right}.dash tr.tot td{font-weight:800;border-top:2px solid var(--ink)}
@@ -141,7 +142,10 @@
           <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>GC No</th><th>Date</th><th>From</th><th>To</th><th>Consignor</th><th>Consignee</th><th>Pay Type</th><th>Total</th><th>Status</th></tr></thead><tbody id="inRows"></tbody></table></div></div>
         <div id="paneSlip" class="hidden"><div class="lr-top"><button type="button" class="btn-primary" id="newSlipBtn">Create Delivery slip</button></div>
           <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>Slip No</th><th>Date</th><th>Total GCs</th><th>Total Amount</th><th>Saved</th></tr></thead><tbody id="slipRows"></tbody></table></div></div>
-        <div id="paneAcc" class="hidden"><div class="toolbar"><label class="acc-lbl">From <input type="date" id="accFrom" style="width:auto"></label><label class="acc-lbl">To <input type="date" id="accTo" style="width:auto"></label><button type="button" class="btn-secondary mini" id="accClear">Clear dates</button><span class="gccount" id="accScope"></span></div><div id="accBody"></div></div>
+        <div id="paneAcc" class="hidden"><div class="toolbar"><label class="acc-lbl">From <input type="date" id="accFrom" style="width:auto"></label><label class="acc-lbl">To <input type="date" id="accTo" style="width:auto"></label><button type="button" class="btn-secondary mini" id="accClear">Clear dates</button><span class="gccount" id="accScope"></span></div>
+          <div class="card keep-note"><div><b>Records are kept for 60 days.</b> Every night, GCs, LRs, inward records and delivery slips older than 60 days are deleted. In the first days of each month, download the previous month as Excel and keep the file.</div>
+            <div class="keep-act"><label class="acc-lbl">Month <input type="month" id="expMonth" style="width:auto"></label><button type="button" class="btn-primary mini" id="expBtn">Download month (Excel)</button></div></div>
+          <div id="accBody"></div></div>
       </section>
       <section id="viewBranches" class="hidden"><div id="brBody"></div></section>
       <div class="modal hidden" id="lrModal"><div class="modal-box" id="lrBox"></div></div>

@@ -108,28 +108,29 @@ const store = {
     for (let i = 0; i < u.length; i += 150) out.push(...await getJSON(`entries?select=${cols || '*'}${branch ? `&branch_id=eq.${branch}` : ''}&gc_no=${inList(u.slice(i, i + 150))}`));
     return out;
   },
+  async full(id) { const r = await getJSON(`entries?select=data&id=eq.${id}`); if (!r.length) throw new Error('This GC is no longer saved.'); return r[0].data; },
   async byIds(ids) {
     const out = [];
     for (let i = 0; i < ids.length; i += 150) out.push(...await getJSON(`entries?select=*&id=${inList(ids.slice(i, i + 150))}`));
     return out;
   },
 };
+// changes only the pay type, inside the database
 store.setPayType = async function (e, payType) {
-  const data = { ...e.data, payType };
-  const x = await sbFetch(`entries?id=eq.${e.id}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ data }) }); if (!x.ok) throw new Error(await x.text());
-  e.data = data;
+  try { await rpc('set_pay_type', { p_id: e.id, p_pay: payType }); } catch (err) { throw new Error(isMissing(err.message) ? SETUP_MSG : err.message); }
+  e.pay_type = payType;
 };
 // generic "one table of saved rows" store (inward receipts, delivery slips)
-const tableStore = (table, missingMsg) => ({
+const tableStore = (table, missingMsg, cols = '*') => ({
   missing: m => /PGRST205|does not exist|404/.test(m) ? missingMsg : m,
-  async page(offset) { try { return await getPage(`${table}?select=*&order=created_at.desc${bq()}`, offset); } catch (e) { throw new Error(this.missing(e.message)); } },
+  async page(offset) { try { return await getPage(`${table}?select=${cols}&order=created_at.desc${bq()}`, offset); } catch (e) { throw new Error(this.missing(e.message)); } },
   async add(rows) {
     const branch = needBranch();
     const x = await sbFetch(table, { method: 'POST', body: JSON.stringify(rows.map(r => ({ ...r, branch_id: branch }))) }); if (!x.ok) throw new Error(this.missing(await x.text()));
   },
 });
 const inwardStore = tableStore('inwards', 'The inwards table is missing in Supabase. Run supabase.sql and supabase-branches.sql once.');
-const slipStore = tableStore('delivery_slips', 'The delivery_slips table is missing in Supabase. Run supabase.sql and supabase-branches.sql once.');
+const slipStore = tableStore('delivery_slips', 'The delivery_slips table is missing in Supabase. Run supabase.sql and supabase-branches.sql once.', 'id,branch_id,slip_no,slip_date,gc_numbers,total,created_at');
 // numbers are sequential, so the highest of the latest few is the highest of all
 const nextNo = (list, key, prefix) => prefix + String(list.reduce((m, l) => Math.max(m, parseInt(String(l[key] || '').replace(/\D/g, '')) || 0), 0) + 1).padStart(3, '0');
 slipStore.nextNo = async () => nextNo(await getJSON(`delivery_slips?select=slip_no&order=id.desc&limit=50${bq()}`), 'slip_no', 'DS');
@@ -214,11 +215,13 @@ $('#entryForm').addEventListener('submit', async e => {
 });
 $('#doneView').addEventListener('click', () => showDoc('GC ' + savedEntry.gc, 'Saved receipt.', receiptPagesFn(savedEntry), `GC-${savedEntry.gc}`));
 $('#donePdf').addEventListener('click', () => receiptPDF(rd(savedEntry), `GC-${savedEntry.gc}.pdf`).catch(e => showToast(e.message, true)));
-// Send the GC PDF to the consignor's WhatsApp through the send-whatsapp edge function
+// Send the GC PDF to the consignor's WhatsApp. Goes through the Cloudflare Worker when config.js sets WHATSAPP_URL
+// (free, and keeps the PDFs out of Supabase's 5 GB monthly egress); otherwise through the Supabase edge function.
+const waURL = () => (window.WHATSAPP_URL || '').trim() || window.SUPABASE_URL.replace(/\/$/, '') + '/functions/v1/send-whatsapp';
 async function sendWhatsApp(d, auto) {
   const b = $('#doneWa'); if (b) { b.disabled = true; b.textContent = 'Sending…'; }
   try {
-    const x = await fetch(window.SUPABASE_URL.replace(/\/$/, '') + '/functions/v1/send-whatsapp', { method: 'POST', headers: { apikey: window.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + window.SUPABASE_ANON_KEY, 'Content-Type': 'application/json', 'x-session-token': session.token },
+    const x = await fetch(waURL(), { method: 'POST', headers: { apikey: window.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + window.SUPABASE_ANON_KEY, 'Content-Type': 'application/json', 'x-session-token': session.token },
       body: JSON.stringify({ phone: d.consignorPhone, pdf: await receiptPdfBase64(rd(d)), gc: d.gc, consignor: d.consignor, from: d.from, to: d.to }) });
     const j = await x.json().catch(() => ({})); if (!x.ok) throw new Error(j.error || 'Request failed');
     showToast('GC sent to consignor on WhatsApp');
@@ -257,7 +260,7 @@ function renderEntries() {
   viewList = entries;
   const filtered = $('#gcSearch').value.trim() || $('#gcPay').value;
   $('#gcCount').textContent = `${entries.length < entTotal ? `Showing ${entries.length.toLocaleString('en-IN')} of ` : ''}${entTotal.toLocaleString('en-IN')} ${filtered ? 'matching ' : ''}entries`;
-  $('#rows').innerHTML = (viewList.length ? viewList.map((e, i) => `<tr class="row" data-i="${i}"><td class="adm">${esc(bname(e.branch_id))}</td><td>${esc(e.gc_no)}</td><td>${esc(e.entry_date)}</td><td>${esc(e.from_city)}</td><td>${esc(e.to_city)}</td><td>${esc(e.consignor)}</td><td>${esc(e.consignee)}</td><td>${esc(e.data && e.data.payType)}</td><td>${fmt(e.total)}</td><td>${new Date(e.created_at).toLocaleString('en-IN')}</td><td>${actions}</td></tr>`).join('') : `<tr><td colspan="11">${filtered ? 'No matching entries.' : 'No entries yet.'}</td></tr>`) + moreRow(entries.length < entTotal, 11);
+  $('#rows').innerHTML = (viewList.length ? viewList.map((e, i) => `<tr class="row" data-i="${i}"><td class="adm">${esc(bname(e.branch_id))}</td><td>${esc(e.gc_no)}</td><td>${esc(e.entry_date)}</td><td>${esc(e.from_city)}</td><td>${esc(e.to_city)}</td><td>${esc(e.consignor)}</td><td>${esc(e.consignee)}</td><td>${esc(e.pay_type)}</td><td>${fmt(e.total)}</td><td>${new Date(e.created_at).toLocaleString('en-IN')}</td><td>${actions}</td></tr>`).join('') : `<tr><td colspan="11">${filtered ? 'No matching entries.' : 'No entries yet.'}</td></tr>`) + moreRow(entries.length < entTotal, 11);
 }
 async function loadLRs(append) {
   const res = await lrStore.page(append ? lrs.length : 0);
@@ -312,6 +315,59 @@ function renderAcc() {
 const accReload = () => loadAcc().catch(err => showToast(err.message, true));
 $('#accFrom').addEventListener('change', accReload); $('#accTo').addEventListener('change', accReload);
 $('#accClear').addEventListener('click', () => { $('#accFrom').value = ''; $('#accTo').value = ''; accReload(); });
+// ---- MONTHLY DOWNLOAD: everything saved in one month (India time), as an Excel file with one sheet per record type.
+// Records are deleted after 60 days, so this file is the long-term copy. ----
+const XLSX_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+const loadScript = src => new Promise((res, rej) => {
+  if (window.XLSX) return res();
+  const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load the Excel maker. Check the internet connection.')); document.head.appendChild(s);
+});
+const ym = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+const prevMonth = () => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return ym(d); };
+const nextMonth = m => { const [y, mo] = m.split('-').map(Number); return ym(new Date(y, mo, 1)); };
+// every row of a table saved in [from, to): 1000 at a time, in id order
+async function monthRows(table, cols, from, to, onPage) {
+  const out = []; let last = 0;
+  for (;;) {
+    const part = await getJSON(`${table}?select=${cols}&created_at=gte.${encodeURIComponent(from)}&created_at=lt.${encodeURIComponent(to)}&id=gt.${last}&order=id&limit=1000${bq()}`);
+    out.push(...part); onPage(out.length);
+    if (part.length < 1000) return out;
+    last = part[part.length - 1].id;
+  }
+}
+const when = t => t ? new Date(t).toLocaleString('en-IN') : '';
+const asNum = v => { const n = parseFloat(v); return v !== '' && v != null && isFinite(n) && String(v).trim() === String(n) ? n : (v ?? ''); };
+async function downloadMonth() {
+  const m = $('#expMonth').value; if (!m) return showToast('Pick a month first.', true);
+  const b = $('#expBtn'), from = `${m}-01T00:00:00+05:30`, to = `${nextMonth(m)}-01T00:00:00+05:30`;
+  const say = t => { b.textContent = t; };
+  b.disabled = true;
+  try {
+    say('Loading…'); await loadScript(XLSX_SRC);
+    const ents = await monthRows('entries', 'id,branch_id,gc_no,created_at,total,data', from, to, n => say(`Reading GCs… ${n.toLocaleString('en-IN')}`));
+    const lrsM = await monthRows('lrs', 'id,branch_id,memo_no,lr_date,created_at,data', from, to, n => say(`Reading LRs… ${n.toLocaleString('en-IN')}`));
+    const inw = await monthRows('inwards', 'id,branch_id,gc_no,created_at', from, to, n => say(`Reading inward… ${n.toLocaleString('en-IN')}`));
+    const sl = await monthRows('delivery_slips', 'id,branch_id,slip_no,slip_date,created_at,data', from, to, n => say(`Reading slips… ${n.toLocaleString('en-IN')}`));
+    say('Making the Excel file…'); await new Promise(r => setTimeout(r, 30));
+    const fields = sections.flatMap(s => s.fields), known = new Set(fields.map(f => f[0]));
+    const extra = [...new Set(ents.flatMap(e => Object.keys(e.data || {})))].filter(k => !known.has(k) && k !== 'printedAt');
+    const gcSheet = [['Branch', 'Saved at', ...fields.map(f => f[1]), ...extra, 'Total', 'Printed at'],
+      ...ents.map(e => { const d = e.data || {}; return [bname(e.branch_id), when(e.created_at), ...fields.map(f => f[2] === N ? asNum(d[f[0]]) : (d[f[0]] ?? '')), ...extra.map(k => d[k] ?? ''), asNum(e.total), d.printedAt || '']; })];
+    const lrSheet = [['Branch', 'Memo No', 'LR Date', 'Saved at', 'From', 'To', 'Truck No', 'Driver', 'GC No', 'Destination', 'Consignor', 'Consignee', 'Articles', 'Contains', 'Weight', 'Pay Type', 'Amount', 'PM No'],
+      ...lrsM.flatMap(l => { const d = l.data || {}, head = [bname(l.branch_id), l.memo_no, dmy(l.lr_date), when(l.created_at), d.from || '', d.to || '', d.truckNo || '', d.driverName || ''];
+        return (d.rows && d.rows.length ? d.rows : [{}]).map(r => [...head, r.lr ?? '', r.dest ?? '', r.consignor ?? '', r.consignee ?? '', asNum(r.articles), r.contains ?? '', asNum(r.weight), r.pay ?? '', asNum(r.total), r.pm ?? '']); })];
+    const inSheet = [['Branch', 'GC No', 'Received at'], ...inw.map(w => [bname(w.branch_id), w.gc_no, when(w.created_at)])];
+    const slSheet = [['Branch', 'Slip No', 'Slip Date', 'Saved at', 'GC No', 'Units', 'Door Delivery', 'Other', 'Total'],
+      ...sl.flatMap(s => (Array.isArray(s.data) && s.data.length ? s.data : [{}]).map(r => [bname(s.branch_id), s.slip_no, dmy(s.slip_date), when(s.created_at), r.gc ?? '', asNum(r.units), asNum(r.door), asNum(r.other), asNum(r.total)]))];
+    const wb = XLSX.utils.book_new();
+    [['GC entries', gcSheet], ['LR', lrSheet], ['Inward', inSheet], ['Delivery slips', slSheet]].forEach(([n, rows]) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), n));
+    XLSX.writeFile(wb, `Sabri Logistics ${scopeLabel().replace(/[^\w -]/g, '')} ${m}.xlsx`);
+    showToast(`Downloaded ${m}: ${ents.length} GCs, ${lrsM.length} LRs, ${inw.length} inward, ${sl.length} slips`);
+  } catch (err) { showToast('Download failed: ' + err.message, true); }
+  b.disabled = false; b.textContent = 'Download month (Excel)';
+}
+$('#expMonth').value = prevMonth();
+$('#expBtn').addEventListener('click', downloadMonth);
 // "Show more" under a list reads its next page
 const moreBtn = (sel, load) => $(sel).addEventListener('click', async e => {
   const b = e.target.closest('[data-more]'); if (!b) return;
@@ -321,9 +377,11 @@ const moreBtn = (sel, load) => $(sel).addEventListener('click', async e => {
 moreBtn('#rows', loadEntries); moreBtn('#lrRows', loadLRs); moreBtn('#inRows', p => loadInward(p)); moreBtn('#slipRows', p => loadSlips(p));
 $('#rows').addEventListener('click', async e => {
   const tr = e.target.closest('tr.row'); if (!tr) return; const row = viewList[tr.dataset.i], a = e.target.dataset.a;
-  if (a === 'pdf') return receiptPDF(rd(row.data, row.branch_id), `GC-${row.gc_no}.pdf`);
-  if (a === 'print') return receiptPrint(rd(row.data));
-  showDoc('GC ' + row.gc_no, 'Saved receipt.', receiptPagesFn(row.data, row.branch_id), `GC-${row.gc_no}`);
+  // the list holds only its columns: the full GC is read now, for this one entry
+  let d; try { d = await store.full(row.id); } catch (err) { return showToast(err.message, true); }
+  if (a === 'pdf') return receiptPDF(rd(d, row.branch_id), `GC-${row.gc_no}.pdf`);
+  if (a === 'print') return receiptPrint(rd(d, row.branch_id));
+  showDoc('GC ' + row.gc_no, 'Saved receipt.', receiptPagesFn(d, row.branch_id), `GC-${row.gc_no}`);
 });
 
 // ---- LR (lorry receipt) ----
@@ -446,7 +504,7 @@ const entryOf = (gc, branch) => inEntries.get(branch + '|' + gc);
 // ---- INWARD ----
 async function loadInward(append) {
   const res = await inwardStore.page(append ? inwards.length : 0);
-  const ents = res.rows.length ? await store.byGcs(curBranch(), res.rows.map(w => w.gc_no)) : [];
+  const ents = res.rows.length ? await store.byGcs(curBranch(), res.rows.map(w => w.gc_no), 'id,branch_id,gc_no,entry_date,from_city,to_city,consignor,consignee,total,pay_type:data->>payType') : [];
   if (!append) inEntries = new Map();
   ents.forEach(e => inEntries.set(e.branch_id + '|' + e.gc_no, e));
   inwards = append ? inwards.concat(res.rows) : res.rows; inMore = res.more;
@@ -454,7 +512,7 @@ async function loadInward(append) {
 }
 function renderInward() {
   $('#inRows').innerHTML = inwards.length ? inwards.map((w, i) => {
-    const e = entryOf(w.gc_no, w.branch_id) || { data: {} }, pay = e.data.payType || '';
+    const e = entryOf(w.gc_no, w.branch_id) || {}, pay = e.pay_type || '';
     return `<tr data-i="${i}"><td class="adm">${esc(bname(w.branch_id))}</td><td>${esc(w.gc_no)}</td><td>${esc(dmy(e.entry_date))}</td><td>${esc(e.from_city)}</td><td>${esc(e.to_city)}</td><td>${esc(e.consignor)}</td><td>${esc(e.consignee)}</td>
       <td><select class="pay-sel" data-orig="${esc(pay)}">${PAY.map(p => `<option ${p === pay ? 'selected' : ''}>${p}</option>`).join('')}</select><button type="button" class="btn-primary save-pay hidden">Save</button></td>
       <td>${e.total != null ? fmt(e.total) : ''}</td><td class="rcv">&#10003; Received<br><small style="color:var(--muted);font-weight:400">${new Date(w.created_at).toLocaleDateString('en-IN')}</small></td></tr>`;

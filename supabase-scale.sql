@@ -1,4 +1,5 @@
--- SCALE-UP: one GC number per branch, fast paged lists, accounting totals worked out in the database.
+-- SCALE-UP: one GC number per branch, fast paged lists, accounting totals worked out in the database,
+-- and a nightly clean-up that keeps the last 60 days (see section 7).
 -- Run once in Supabase -> SQL Editor, AFTER supabase.sql, supabase-branches.sql and supabase-branch-phones.sql.
 -- Safe to run again. If a branch already has the same GC number saved twice, it stops and lists them:
 -- delete or fix the extra rows (Table Editor -> entries), then run it again.
@@ -58,7 +59,9 @@ returns json language sql stable set search_path = public as $$
   select json_build_object(
     'total', (select count(*) from f),
     'rows', coalesce((select json_agg(r) from (
-      select * from f order by
+      -- list columns only; the full entry is read when it is opened, printed or downloaded
+      select id, branch_id, gc_no, entry_date, from_city, to_city, consignor, consignee, total, created_at, data ->> 'payType' as pay_type
+      from f order by
         case when p_sort = 'gcAsc' then length(gc_no) end, case when p_sort = 'gcAsc' then gc_no end,
         case when p_sort = 'gcDesc' then length(gc_no) end desc, case when p_sort = 'gcDesc' then gc_no end desc,
         case when p_sort = 'dateDesc' then entry_date end desc nulls last,
@@ -104,5 +107,37 @@ returns json language sql stable set search_path = public as $$
   from ids left join e on e.branch_id = ids.branch_id left join s on s.branch_id = ids.branch_id left join w on w.branch_id = ids.branch_id
 $$;
 
+-- ---------- 6. change a GC's pay type in place (no need to download and re-upload the whole entry) ----------
+create or replace function public.set_pay_type(p_id bigint, p_pay text) returns void
+language sql volatile set search_path = public as $$
+  update public.entries set data = jsonb_set(data, '{payType}', to_jsonb(p_pay))
+  where id = p_id and p_pay in ('Paid', 'To Pay', 'To be Billed')
+$$;
+
 grant execute on function public.app_num(text), public.entries_page(bigint, text, text, text, int, int),
-  public.acc_totals(bigint, date, date) to anon, authenticated;
+  public.acc_totals(bigint, date, date), public.set_pay_type(bigint, text) to anon, authenticated;
+
+-- ---------- 7. keep 60 days: every night, records older than that are deleted ----------
+-- To keep a different number of days, change 60 in the schedule below and run this file again (30 is the minimum).
+create or replace function public.app_retention(p_days int default 60) returns void
+language plpgsql volatile security definer set search_path = public as $$
+declare cutoff timestamptz := now() - make_interval(days => greatest(p_days, 30));
+begin
+  delete from public.entries where created_at < cutoff;
+  delete from public.lrs where created_at < cutoff;
+  delete from public.inwards where created_at < cutoff;
+  delete from public.delivery_slips where created_at < cutoff;
+  delete from public.sessions where expires_at < now();
+end $$;
+revoke all on function public.app_retention(int) from public, anon, authenticated;
+
+-- runs at 03:00 India time (21:30 UTC) every night
+do $$
+begin
+  create extension if not exists pg_cron with schema pg_catalog;
+  perform cron.unschedule(jobid) from cron.job where jobname = 'sabri-delete-old-data';
+  perform cron.schedule('sabri-delete-old-data', '30 21 * * *', 'select public.app_retention(60)');
+  raise notice 'Nightly clean-up scheduled: records older than 60 days are deleted at 03:00 IST.';
+exception when others then
+  raise notice 'Nightly clean-up NOT scheduled (%). Turn on pg_cron under Database -> Extensions, then run this file again.', sqlerrm;
+end $$;
