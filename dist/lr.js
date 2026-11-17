@@ -36,12 +36,11 @@ function lrSVG(lr, page = 0, pages = 1, imgs = { logo: 'assets/logo.png' }) {
   // ---- letterhead ----
   o += text(20, 22, 7, 'GSTIN : ', { b: 1 });
   o += text(297, 18, 6.5, 'SUBJECT TO VERAVAL JURISDICTION', { b: 1, a: 'middle', ls: 0.4 });
-  o += text(577, 24, 9.5, 'M : 99986 22244', { b: 1, a: 'end' });
+  const ph = (lr.branchPhone || '').trim(); if (ph) o += text(577, 24, 9.5, 'M : ' + ph, { b: 1, a: 'end' }); // that branch's own number
   // company logo (same as the GC receipt)
   o += `<image href="${imgs.logo}" x="20" y="34" width="70" height="45.6" preserveAspectRatio="xMidYMid meet"/>`;
   o += `<text x="160" y="70" font-size="35" font-weight="700" fill="${R}" font-family="Rockwell,'Roboto Slab','Courier New',Georgia,serif" textLength="291" lengthAdjust="spacingAndGlyphs">Sabri Logistics</text>`;
-  o += `<rect x="18" y="82" width="559" height="19" fill="${R}"/>`;
-  o += text(297.5, 95, 8.6, 'Surat : Godown No. 12, Ambica Transport Compound, Nr. Mangalam Granite, Saroli Road, Surat-395010', { b: 1, a: 'middle', c: '#fff' });
+  o += text(297.5, 95, 8.6, 'Surat : Godown No. 12, Ambica Transport Compound, Nr. Mangalam Granite, Saroli Road, Surat-395010', { b: 1, a: 'middle' });
 
   // ---- header fields: label + underline + value ----
   const field = (label, lx, x1, x2, y, val) => {

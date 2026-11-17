@@ -169,7 +169,7 @@ const receiptPagesFn = (d, branchId) => async inline => [receiptSVG(rd(d, branch
 async function liveLR(lr, branch) {
   let list = []; try { list = await store.byGcs(branch, (lr.rows || []).map(r => r.lr), 'gc_no,total,pay:data->>payType'); } catch (e) {}
   const by = new Map(list.map(e => [String(e.gc_no), e]));
-  return { ...lr, rows: (lr.rows || []).map(r => { const e = by.get(String(r.lr)); return e ? { ...r, pay: e.pay || r.pay, total: e.total } : r; }) };
+  const bo = branchOf(branch); return { ...lr, branchPhone: (bo.phone || bo.booking_ph || '').trim(), rows: (lr.rows || []).map(r => { const e = by.get(String(r.lr)); return e ? { ...r, pay: e.pay || r.pay, total: e.total } : r; }) };
 }
 const lrPagesFn = (lr, branch) => async inline => lrPages(await liveLR(lr, branch), inline ? await inlineImgs() : undefined);
 
