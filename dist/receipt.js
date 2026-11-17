@@ -127,11 +127,11 @@ function copySVG(d, label, imgs) {
 
 // imgs: {logo, qr} urls (use data: URIs when rasterising)
 function receiptSVG(d, imgs = { logo: 'assets/logo.png', qr: 'assets/qr.png' }) {
-  const s = RECEIPT_TPL.step;
+  const s = RECEIPT_TPL.step + 14; // 14pt extra between the copies so each heading clears the dashed cut line
   let o = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 595 842" width="595" height="842" font-family="${FONT}" style="white-space:pre;background:#fff;font-kerning:none;font-variant-ligatures:none;text-rendering:geometricPrecision;font-synthesis:none"><rect width="595" height="842" fill="#fff"/>`;
   COPIES.forEach((label, i) => {
     o += `<g transform="translate(0 ${(i * s).toFixed(2)})">${copySVG(d, label, imgs)}</g>`;
-    if (i < 2) o += `<line x1="12.3" x2="582.4" y1="${(271.3 + i * s).toFixed(2)}" y2="${(271.3 + i * s).toFixed(2)}" stroke="#000" stroke-width="0.6" stroke-dasharray="1.8 1.8"/>`;
+    if (i < 2) o += `<line x1="12.3" x2="582.4" y1="${(274.3 + i * s).toFixed(2)}" y2="${(274.3 + i * s).toFixed(2)}" stroke="#000" stroke-width="0.6" stroke-dasharray="1.8 1.8"/>`;
   });
   return o + '</svg>';
 }

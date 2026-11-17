@@ -67,6 +67,12 @@ function lrSVG(lr, page = 0, pages = 1, imgs = { logo: 'assets/logo.png' }) {
     x += w;
   });
 
+  // dashed vertical lines between the columns
+  xs.slice(1).forEach(cx => { o += `<line x1="${cx}" y1="${LR_Y0}" x2="${cx}" y2="${LR_Y0 + H}" stroke="${R}" stroke-width="0.8" stroke-dasharray="3 2"/>`; });
+
+  // dashed line under the column-names row
+  o += `<line x1="${LR_X0}" y1="${LR_Y0 + LR_HEAD}" x2="${LR_X0 + W}" y2="${LR_Y0 + LR_HEAD}" stroke="${R}" stroke-width="0.8" stroke-dasharray="3 2"/>`;
+
   // ---- rows ----
   const ink = '#111', left = new Set([2, 3, 5]);
   (lr.rows || []).slice(page * LR_ROWS, (page + 1) * LR_ROWS).forEach((r, i) => {
