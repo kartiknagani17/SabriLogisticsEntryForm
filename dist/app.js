@@ -1,4 +1,6 @@
 const $ = s => document.querySelector(s);
+// today's date on this computer (toISOString would give the UTC date, i.e. yesterday between midnight and 5:30 am in India)
+const todayLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const fmt = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // ---- form definition: [key, label, type, placeholder, extra class] ----
@@ -54,7 +56,9 @@ let branches = [];       // admin: every branch, employee: just their own
 const isAdmin = () => !!session && session.role === 'admin';
 const curBranch = () => isAdmin() ? scopeBranch : (session && session.branch_id);
 const bq = b => { b = b === undefined ? curBranch() : b; return b ? `&branch_id=eq.${b}` : ''; };
-const needBranch = () => { const b = curBranch(); if (!b) throw new Error('Choose a branch in the left menu first.'); return b; };
+// the admin's "Main Branch" view shows everything; anything the admin saves from it goes to the real Main Branch
+const mainBranch = () => branches.find(b => /^main branch$/i.test((b.name || '').trim())) || branches.reduce((m, b) => !m || b.id < m.id ? b : m, null); // the first branch ever created, even if renamed
+const needBranch = () => { const b = curBranch() || (isAdmin() && mainBranch() ? mainBranch().id : null); if (!b) throw new Error('Choose a branch in the left menu first.'); return b; };
 const bname = id => (branches.find(b => b.id === id) || {}).name || '';
 const sbFetch = async (p, o = {}) => {
   const x = await fetch(window.SUPABASE_URL.replace(/\/$/, '') + '/rest/v1/' + p, { ...o, headers: { apikey: window.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + window.SUPABASE_ANON_KEY, 'Content-Type': 'application/json', ...(session ? { 'x-session-token': session.token } : {}), ...(o.headers || {}) } });
@@ -133,7 +137,7 @@ const inwardStore = tableStore('inwards', 'The inwards table is missing in Supab
 const slipStore = tableStore('delivery_slips', 'The delivery_slips table is missing in Supabase. Run supabase.sql and supabase-branches.sql once.', 'id,branch_id,slip_no,slip_date,gc_numbers,total,created_at');
 // numbers are sequential, so the highest of the latest few is the highest of all
 const nextNo = (list, key, prefix) => prefix + String(list.reduce((m, l) => Math.max(m, parseInt(String(l[key] || '').replace(/\D/g, '')) || 0), 0) + 1).padStart(3, '0');
-slipStore.nextNo = async () => nextNo(await getJSON(`delivery_slips?select=slip_no&order=id.desc&limit=50${bq()}`), 'slip_no', 'DS');
+slipStore.nextNo = async () => nextNo(await getJSON(`delivery_slips?select=slip_no&order=id.desc&limit=50${bq(needBranch())}`), 'slip_no', 'DS');
 const lrStore = {
   missing: m => /PGRST205|does not exist|404/.test(m) ? 'The lrs table is missing in Supabase. Run supabase.sql and supabase-branches.sql once.' : m,
   async save(lr) {
@@ -143,7 +147,7 @@ const lrStore = {
   // the list shows a few columns; the full LR (all its rows) is read when it is opened
   async page(offset) { try { return await getPage(`lrs?select=id,branch_id,memo_no,lr_date,created_at,gc_numbers,from:data->>from,to:data->>to,truckNo:data->>truckNo&order=created_at.desc${bq()}`, offset); } catch (e) { throw new Error(this.missing(e.message)); } },
   async full(id) { return (await getJSON(`lrs?select=data&id=eq.${id}`))[0].data; },
-  async nextMemo() { try { return nextNo(await getJSON(`lrs?select=memo_no&order=id.desc&limit=50${bq()}`), 'memo_no', 'SL'); } catch (e) { throw new Error(this.missing(e.message)); } },
+  async nextMemo() { try { return nextNo(await getJSON(`lrs?select=memo_no&order=id.desc&limit=50${bq(needBranch())}`), 'memo_no', 'SL'); } catch (e) { throw new Error(this.missing(e.message)); } },
 };
 
 // ---- modal: document viewer with the actions on top ----
@@ -169,7 +173,7 @@ const receiptPagesFn = (d, branchId) => async inline => [receiptSVG(rd(d, branch
 async function liveLR(lr, branch) {
   let list = []; try { list = await store.byGcs(branch, (lr.rows || []).map(r => r.lr), 'gc_no,total,pay:data->>payType'); } catch (e) {}
   const by = new Map(list.map(e => [String(e.gc_no), e]));
-  const bo = branchOf(branch); return { ...lr, branchPhone: (bo.phone || bo.booking_ph || '').trim(), rows: (lr.rows || []).map(r => { const e = by.get(String(r.lr)); return e ? { ...r, pay: e.pay || r.pay, total: e.total } : r; }) };
+  const bo = branchOf(branch); return { ...lr, branchPhone: (bo.booking_ph || bo.delivery_ph || '').trim(), rows: (lr.rows || []).map(r => { const e = by.get(String(r.lr)); return e ? { ...r, pay: e.pay || r.pay, total: e.total } : r; }) };
 }
 const lrPagesFn = (lr, branch) => async inline => lrPages(await liveLR(lr, branch), inline ? await inlineImgs() : undefined);
 
@@ -396,7 +400,7 @@ async function openCreateLR() {
   let memoNo, recent;
   try { [recent, memoNo] = await Promise.all([store.search(lrBranch, '', CAP, PICK_LR), lrStore.nextMemo()]); }
   catch (err) { closeModal(); showToast(err.message, true); return; }
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const byId = new Map();      // every GC seen in this window, by entry id
   const remember = list => list.map(e => { byId.set(e.id, e); return e.id; });
   const recentIds = remember(recent);
@@ -588,7 +592,7 @@ async function openCreateSlip() {
     if (!rows.length) { showToast('Add at least one GC number', true); return; }
     const b = $('#slCreate'); b.disabled = true; b.textContent = 'Creating…';
     const data = rows.map(r => ({ gc: r.gc, units: r.units, door: parseFloat(r.door) || 0, other: parseFloat(r.other) || 0, total: tot(r) }));
-    try { await slipStore.add([{ slip_no: slipNo, slip_date: new Date().toISOString().slice(0, 10), gc_numbers: rows.map(r => r.gc), total: data.reduce((a, r) => a + r.total, 0), data }]); closeModal(); showToast('Delivery slip ' + slipNo + ' created'); loadSlips().catch(err => showToast(err.message, true)); }
+    try { await slipStore.add([{ slip_no: slipNo, slip_date: todayLocal(), gc_numbers: rows.map(r => r.gc), total: data.reduce((a, r) => a + r.total, 0), data }]); closeModal(); showToast('Delivery slip ' + slipNo + ' created'); loadSlips().catch(err => showToast(err.message, true)); }
     catch (err) { showToast(err.message, true); b.disabled = false; b.textContent = 'Create slip'; }
   };
 }
@@ -609,7 +613,7 @@ document.addEventListener('click', e => { const b = e.target.closest('button'); 
 // ================= sign-in =================
 const SESSION_KEY = 'sl_session';
 const normPhone = p => String(p || '').replace(/\D/g, '').slice(-10);
-const scopeLabel = () => isAdmin() ? (scopeBranch ? bname(scopeBranch) : 'All branches') : (session.branch_name || '');
+const scopeLabel = () => isAdmin() ? (scopeBranch ? bname(scopeBranch) : 'Main Branch') : (session.branch_name || '');
 function signOutLocal(msg) {
   session = null; scopeBranch = null; branches = []; entries = []; lrs = []; inwards = []; slips = []; inEntries = new Map(); accRows = [];
   try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
@@ -664,15 +668,15 @@ async function loadBranches() {
 }
 function fillScope() {
   if (!isAdmin()) return;
-  const opts = '<option value="">All branches</option>' + branches.filter(b => b.active || b.id === scopeBranch).map(b => `<option value="${b.id}" ${b.id === scopeBranch ? 'selected' : ''}>${esc(b.name)}</option>`).join('');
+  const mb = mainBranch(), opts = '<option value="">Main Branch</option>' + branches.filter(b => (!mb || b.id !== mb.id) && (b.active || b.id === scopeBranch)).map(b => `<option value="${b.id}" ${b.id === scopeBranch ? 'selected' : ''}>${esc(b.name)}</option>`).join('');
   document.querySelectorAll('.scopeSel').forEach(s => { s.innerHTML = opts; });
 }
 function updateEntryHint() {
-  const b = curBranch();
+  const b = curBranch() || (isAdmin() && mainBranch() ? mainBranch().id : null);
   $('#entryHint').textContent = b ? `Saving to branch: ${isAdmin() ? bname(b) : session.branch_name}` : 'Choose a branch in the left menu before saving.';
 }
 function setScope(id) {
-  scopeBranch = id || null; fillScope(); updateEntryHint(); $('#mode').textContent = scopeLabel();
+  scopeBranch = id && !(mainBranch() && id === mainBranch().id) ? id : null; fillScope(); updateEntryHint(); $('#mode').textContent = scopeLabel();
   if (!$('#viewDash').classList.contains('hidden')) loadDash();
 }
 document.querySelectorAll('.scopeSel').forEach(s => s.addEventListener('change', e => setScope(+e.target.value)));
@@ -715,11 +719,11 @@ function renderBranches() {
 }
 function renderBranchList() {
   $('#brBody').innerHTML = `<div class="topbar"><div><h2>Branches</h2><p>Each branch has its own entries, reports, inward and delivery slips. Its employees see only that branch.</p></div><button type="button" class="btn-primary" data-a="addBranch">Add branch</button></div>
-    <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th>Branch</th><th>City</th><th>Phone</th><th>Employees</th><th>Status</th><th></th></tr></thead><tbody>${branches.length ? branches.map(b => `<tr class="row" data-b="${b.id}"><td><b>${esc(b.name)}</b></td><td>${esc(b.city)}</td><td>${esc(b.phone)}</td><td>${accts.filter(a => a.branch_id === b.id).length}</td><td>${stChip(b.active)}</td><td><button type="button" class="btn-secondary mini" data-a="open">Open</button></td></tr>`).join('') : '<tr><td colspan="6">No branches yet. Use Add branch.</td></tr>'}</tbody></table></div>`;
+    <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th>Branch</th><th>Booking Ph.</th><th>Delivery Ph.</th><th>Employees</th><th>Status</th><th></th></tr></thead><tbody>${branches.length ? branches.map(b => `<tr class="row" data-b="${b.id}"><td><b>${esc(b.name)}</b></td><td>${esc(b.booking_ph)}</td><td>${esc(b.delivery_ph)}</td><td>${accts.filter(a => a.branch_id === b.id).length}</td><td>${stChip(b.active)}</td><td><button type="button" class="btn-secondary mini" data-a="open">Open</button></td></tr>`).join('') : '<tr><td colspan="6">No branches yet. Use Add branch.</td></tr>'}</tbody></table></div>`;
 }
 function renderBranchDetail(b) {
   const emps = accts.filter(a => a.branch_id === b.id);
-  $('#brBody').innerHTML = `<div class="br-head"><div><button type="button" class="btn-ghost mini" data-a="back">&larr; All branches</button><h2 style="margin-top:8px">${esc(b.name)} ${b.active ? '' : '<span class="chip-st off">Off</span>'}</h2><p class="br-meta">${[b.city, b.address, b.phone, b.booking_ph && 'Booking ' + b.booking_ph, b.delivery_ph && 'Delivery ' + b.delivery_ph].filter(Boolean).map(esc).join(' &middot; ') || 'No details added yet'}</p></div>
+  $('#brBody').innerHTML = `<div class="br-head"><div><button type="button" class="btn-ghost mini" data-a="back">&larr; All branches</button><h2 style="margin-top:8px">${esc(b.name)} ${b.active ? '' : '<span class="chip-st off">Off</span>'}</h2><p class="br-meta">${[b.address, b.booking_ph && 'Booking ' + b.booking_ph, b.delivery_ph && 'Delivery ' + b.delivery_ph].filter(Boolean).map(esc).join(' &middot; ') || 'No details added yet'}</p></div>
     <div class="br-actions"><button type="button" class="btn-primary" data-a="viewData">View branch data</button><button type="button" class="btn-secondary" data-a="editBranch">Edit branch</button><button type="button" class="btn-secondary" data-a="toggleBranch">${b.active ? 'Switch off' : 'Switch on'}</button></div></div>
     <div class="br-sec"><h3>Employees (${emps.length})</h3><button type="button" class="btn-primary" data-a="addEmp">Add employee</button></div>
     <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th>Name</th><th>Phone</th><th>Password</th><th>Status</th><th></th></tr></thead><tbody>${emps.length ? emps.map(a => `<tr data-e="${a.id}"><td><b>${esc(a.name)}</b></td><td>${esc(a.phone)}</td><td>${a.has_password ? '<span class="chip-st ok">Set</span>' : '<span class="chip-st wait">Not set yet</span>'}</td><td>${stChip(a.active)}</td><td><button type="button" class="btn-secondary mini" data-a="editEmp">Edit</button><button type="button" class="btn-secondary mini" data-a="resetEmp" ${a.has_password ? '' : 'disabled'}>Reset password</button><button type="button" class="btn-secondary mini" data-a="toggleEmp">${a.active ? 'Switch off' : 'Switch on'}</button></td></tr>`).join('') : '<tr><td colspan="5">No employees yet. Use Add employee.</td></tr>'}</tbody></table></div>`;
@@ -732,12 +736,12 @@ $('#brBody').addEventListener('click', async e => {
     if (a === 'back') { brOpen = null; return renderBranches(); }
     if (a === 'open' || (!a && rowB)) { brOpen = +rowB.dataset.b; return renderBranches(); }
     if (a === 'addBranch') return formModal('Add branch', 'Create the branch first, then add its employees.', [
-      { k: 'name', label: 'Branch name *', ph: 'e.g. Surat' }, { k: 'city', label: 'City' }, { k: 'phone', label: 'Phone', mode: 'tel' }, { k: 'address', label: 'Address', full: true }, { k: 'bkgPh', label: 'Booking Ph.', mode: 'tel' }, { k: 'delPh', label: 'Delivery Ph.', mode: 'tel' }],
-      async v => { if (!v.name) throw new Error('Branch name is required.'); const x = await writeOk(await sbFetch('branches', { method: 'POST', headers: { Prefer: 'return=representation' }, body: json({ name: v.name, city: v.city || null, phone: v.phone || null, address: v.address || null, booking_ph: v.bkgPh || null, delivery_ph: v.delPh || null }) }), 'A branch with this name already exists.'); brOpen = (await x.json())[0].id; await done(); showToast('Branch added'); }, 'Add branch');
+      { k: 'name', label: 'Branch name (same as city) *', ph: 'e.g. Surat', full: true }, { k: 'address', label: 'Address', full: true }, { k: 'bkgPh', label: 'Booking Ph.', mode: 'tel' }, { k: 'delPh', label: 'Delivery Ph.', mode: 'tel' }],
+      async v => { if (!v.name) throw new Error('Branch name is required.'); const x = await writeOk(await sbFetch('branches', { method: 'POST', headers: { Prefer: 'return=representation' }, body: json({ name: v.name, city: v.name, address: v.address || null, booking_ph: v.bkgPh || null, delivery_ph: v.delPh || null }) }), 'A branch with this name already exists.'); brOpen = (await x.json())[0].id; await done(); showToast('Branch added'); }, 'Add branch');
     if (!b) return;
     if (a === 'editBranch') return formModal('Edit branch', b.name, [
-      { k: 'name', label: 'Branch name *', val: b.name }, { k: 'city', label: 'City', val: b.city }, { k: 'phone', label: 'Phone', val: b.phone, mode: 'tel' }, { k: 'address', label: 'Address', val: b.address, full: true }, { k: 'bkgPh', label: 'Booking Ph.', val: b.booking_ph, mode: 'tel' }, { k: 'delPh', label: 'Delivery Ph.', val: b.delivery_ph, mode: 'tel' }],
-      async v => { if (!v.name) throw new Error('Branch name is required.'); await writeOk(await sbFetch(`branches?id=eq.${b.id}`, { method: 'PATCH', body: json({ name: v.name, city: v.city || null, phone: v.phone || null, address: v.address || null, booking_ph: v.bkgPh || null, delivery_ph: v.delPh || null }) }), 'A branch with this name already exists.'); await done(); showToast('Branch updated'); });
+      { k: 'name', label: 'Branch name (same as city) *', val: b.name, full: true }, { k: 'address', label: 'Address', val: b.address, full: true }, { k: 'bkgPh', label: 'Booking Ph.', val: b.booking_ph, mode: 'tel' }, { k: 'delPh', label: 'Delivery Ph.', val: b.delivery_ph, mode: 'tel' }],
+      async v => { if (!v.name) throw new Error('Branch name is required.'); await writeOk(await sbFetch(`branches?id=eq.${b.id}`, { method: 'PATCH', body: json({ name: v.name, city: v.name, address: v.address || null, booking_ph: v.bkgPh || null, delivery_ph: v.delPh || null }) }), 'A branch with this name already exists.'); await done(); showToast('Branch updated'); });
     if (a === 'toggleBranch') {
       if (b.active && !confirm(`Switch off ${b.name}? Its employees will not be able to sign in. Nothing is deleted.`)) return;
       await writeOk(await sbFetch(`branches?id=eq.${b.id}`, { method: 'PATCH', body: json({ active: !b.active }) })); const was = b.active; await done(); return showToast(was ? 'Branch switched off' : 'Branch switched on');
