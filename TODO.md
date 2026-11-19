@@ -42,4 +42,4 @@ the first top-up. Meta has no balance API, so record each top-up you make in Wha
 ## Hosting
 
 The site is hosted on Vercel from this repository (`vercel.json`: serves `dist`, adds security headers). Every push to
-`main` deploys. Database changes are in `supabase-scale/` (step 5 = missing GCs, login hardening, wallet; already run).
+`main` deploys. `/` is the public business website (index, privacy, terms); the staff dashboard is at `/app`. Database changes are in `supabase-scale/` (step 5 = missing GCs, login hardening, wallet; already run).

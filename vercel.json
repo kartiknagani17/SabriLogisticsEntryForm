@@ -17,7 +17,7 @@
       ]
     },
     {
-      "source": "/(index.html)?",
+      "source": "/((index|app|privacy|terms)(.html)?)?",
       "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
     }
   ]

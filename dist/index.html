@@ -1,179 +1,110 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Sabri Logistics · Consignment Entry</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script src="config.js?v=20261119a"></script><script src="receipt-template.js?v=20261119a"></script><script src="receipt.js?v=20261119a"></script><script src="lr.js?v=20261119a"></script><script src="slip.js?v=20261119a"></script>
-  <style>
-    :root{--navy:#0c3b6f;--ink:#10253e;--muted:#718096;--line:#d9e2ec;--orange:#f47b20;--soft:#f5f8fb;--white:#fff;}
-    *{box-sizing:border-box} body{margin:0;background:#eef3f8;color:var(--ink);font:15px Inter,Segoe UI,Arial,sans-serif}
-    .app{display:grid;grid-template-columns:330px 1fr;min-height:100vh}.rail{background:var(--navy);color:#fff;padding:28px 24px;display:flex;flex-direction:column;gap:30px}.brand{display:flex;align-items:center;gap:12px}.brand-mark{width:42px;height:42px;border:2px solid #fff;border-radius:12px;display:grid;place-items:center;font-size:20px;transform:skew(-8deg)}.brand strong{font-size:19px;letter-spacing:.06em}.eyebrow{font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:#a9c1dc}.rail h1{font-size:31px;line-height:1.05;margin:8px 0 0}.rail p{color:#c2d3e6;line-height:1.6;margin:0}.progress{display:grid;gap:10px}.step{display:flex;gap:12px;align-items:center;color:#91a9c4}.step .num{border:1px solid #6484a6;border-radius:50%;width:27px;height:27px;display:grid;place-items:center;font-size:12px}.step.active{color:#fff}.step.active .num{background:var(--orange);border-color:var(--orange)}.step.done{color:#d7f0e2}.step.done .num{background:#2c9a67;border-color:#2c9a67}.rail-footer{margin-top:auto;color:#9ab2cc;font-size:12px;line-height:1.6}.main{padding:28px 34px 42px;max-width:1320px;width:100%;margin:0 auto}.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}.topbar h2{margin:0;font-size:26px}.topbar p{margin:4px 0 0;color:var(--muted)}.badge{background:#e9f7ef;color:#177245;padding:8px 12px;border-radius:999px;font-size:12px;font-weight:700}.workspace{display:grid;grid-template-columns:minmax(540px,1fr) minmax(420px, .82fr);gap:24px;align-items:start}.card{background:var(--white);border:1px solid var(--line);border-radius:18px;box-shadow:0 8px 24px rgba(21,52,80,.06)}.form-card{padding:25px}.step-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:22px}.step-head h3{margin:0;font-size:22px}.step-head p{margin:6px 0 0;color:var(--muted)}.page-tag{color:var(--orange);font-weight:800;font-size:12px;letter-spacing:.1em;text-transform:uppercase}.fields{display:grid;grid-template-columns:repeat(2,1fr);gap:17px}.field{display:flex;flex-direction:column;gap:7px}.field.full{grid-column:1/-1}.field label{font-weight:700;font-size:13px}.field small{font-size:11px;color:var(--muted)}input,textarea,select{border:1px solid #cbd7e4;border-radius:10px;background:#fbfdff;padding:13px 14px;font:inherit;color:var(--ink);outline:none;transition:.2s}input:focus,textarea:focus,select:focus{border-color:var(--orange);box-shadow:0 0 0 3px rgba(244,123,32,.13)}textarea{min-height:92px;resize:vertical}.actions{display:flex;justify-content:space-between;align-items:center;margin-top:25px;padding-top:20px;border-top:1px solid var(--line)}button{border:0;border-radius:10px;padding:13px 18px;font-weight:800;font:inherit;cursor:pointer}.btn-primary{background:var(--orange);color:#fff}.btn-primary:hover{filter:brightness(.96)}.btn-secondary{background:#edf3f8;color:var(--navy)}.btn-ghost{background:transparent;color:var(--muted)}.review{padding:20px 22px;position:sticky;top:22px}.review-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}.review h3{margin:0;font-size:17px}.review .hint{font-size:12px;color:var(--muted)}.mini-note{border:2px solid var(--orange);background:#fff;font-family:Arial,sans-serif;font-size:10px;color:#10253e}.mini-head{padding:10px 9px 7px;border-bottom:1px solid var(--orange);text-align:center}.mini-head .logo{float:left;color:var(--navy);font-weight:900;font-size:16px;letter-spacing:-.08em}.mini-head .title{font-size:18px;color:var(--navy);font-weight:900;letter-spacing:.04em}.mini-head small{display:block;font-size:8px;color:var(--navy);font-weight:700;margin-top:3px}.mini-meta{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--orange)}.mini-meta div{min-height:25px;border-right:1px solid var(--orange);padding:4px 5px}.mini-meta div:last-child{border-right:0}.mini-meta b{display:block;color:var(--navy);font-size:9px}.mini-body{display:grid;grid-template-columns:1.3fr .7fr}.mini-left,.mini-right{border-right:1px solid var(--orange)}.mini-right{border:0}.mini-row{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--orange);min-height:25px}.mini-row > div{padding:4px 5px;border-right:1px solid var(--orange)}.mini-row > div:last-child{border:0}.mini-row b{color:var(--navy);font-size:9px}.mini-party{min-height:47px;text-align:center;border-bottom:1px solid var(--orange);padding:5px}.mini-party b{display:block;color:var(--orange);font-size:10px}.mini-table{width:100%;border-collapse:collapse}.mini-table th,.mini-table td{border-bottom:1px solid var(--orange);border-right:1px solid var(--orange);padding:4px;text-align:center;height:22px}.mini-table th{color:var(--navy);font-size:9px}.mini-table td:last-child,.mini-table th:last-child{border-right:0}.mini-total{padding:7px;text-align:right;font-weight:800}.mini-bottom{display:grid;grid-template-columns:1.6fr .9fr;min-height:47px}.mini-bottom div{padding:6px;border-top:1px solid var(--orange)}.mini-copy{background:var(--orange);color:white;font-weight:800;text-align:center;letter-spacing:.08em}.review-actions{display:flex;gap:10px;margin-top:14px}.review-actions button{flex:1}.hidden{display:none}.toast{position:fixed;right:24px;bottom:24px;background:var(--navy);color:#fff;padding:13px 16px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.2);opacity:0;transform:translateY(10px);pointer-events:none;transition:.25s}.toast.show{opacity:1;transform:none}
-    @media(max-width:1020px){.app{grid-template-columns:1fr}.rail{padding:18px 22px}.rail h1{font-size:25px}.progress{grid-template-columns:repeat(3,1fr)}.rail-footer{display:none}.main{padding:22px}.workspace{grid-template-columns:1fr}.review{position:static}}
-    @media(max-width:650px){.fields{grid-template-columns:1fr}.field.full{grid-column:auto}.main{padding:16px}.progress{grid-template-columns:1fr}.topbar{align-items:flex-start;gap:12px;flex-direction:column}.review{padding:12px}.actions{gap:10px}.actions button{padding:11px 13px}}
-    @media print{body{background:#fff}.rail,.topbar,.form-card,.review-top,.review-actions{display:none!important}.app,.main,.workspace{display:block;padding:0}.review{display:block;box-shadow:none;border:0;padding:0}.mini-note{width:100%;font-size:12px}.mini-head .title{font-size:28px}.mini-head small{font-size:11px}.mini-meta div{min-height:34px}.mini-row{min-height:34px}.mini-row b,.mini-meta b,.mini-table th{font-size:11px}}
-
-    .nav{display:grid;gap:8px}.navbtn{background:transparent;color:#c2d3e6;border:1px solid #3d6595;text-align:left}.navbtn.active{background:var(--orange);border-color:var(--orange);color:#fff}
-    .preview-svg svg{width:100%;height:auto;border:1px solid var(--line);border-radius:4px;background:#fff;display:block}.total-row{display:flex;justify-content:space-between;background:var(--soft);border-radius:10px;padding:11px 14px;margin:0 0 12px;font-weight:800}
-    .mini{transition:.15s}.mini:hover{background:var(--orange);color:#fff}.title-row{display:flex;align-items:center;gap:16px}.newbtn{padding:9px 16px;font-size:13px}
-    @media(min-width:1021px){.main{max-width:1500px}.workspace{grid-template-columns:minmax(640px,1.2fr) minmax(420px,.8fr)}}
-    .tabs{display:flex;gap:6px}.tab{background:#fff;color:var(--navy);border:1px solid var(--line);padding:8px 18px}.tab:hover{background:#edf3f8}.tab.active{background:var(--navy);color:#fff;border-color:var(--navy)}.lr-top{display:flex;justify-content:flex-end;margin-bottom:14px}
-    .modal{position:fixed;inset:0;background:rgba(16,37,62,.55);display:flex;align-items:flex-start;justify-content:center;padding:36px 16px;overflow:auto;z-index:50}.modal-box{background:#fff;border-radius:18px;padding:24px;width:100%;max-width:680px;box-shadow:0 20px 60px rgba(0,0,0,.3)}.modal-box.wide{max-width:760px}.modal-box h3{margin:0 0 4px;font-size:21px}.modal-box .sub{color:var(--muted);margin:0 0 18px}
-    .picker{position:relative}.dd{position:absolute;left:0;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(21,52,80,.15);max-height:240px;overflow:auto;z-index:5}.dd div{padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;gap:12px;font-size:14px}.dd div:hover{background:#fff4ea}.dd small{color:var(--muted)}.dd .none{color:var(--muted);cursor:default}.dd .none:hover{background:none}
-    .chips{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 16px}.chip{background:#fff4ea;border:1px solid #f9c79d;color:#8a3d00;border-radius:999px;padding:6px 8px 6px 12px;font-size:13px;font-weight:700;display:flex;gap:8px;align-items:center}.chip button{padding:0 6px;background:none;color:#8a3d00;font-size:16px;line-height:1}
-    .modal .fields{gap:14px}.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}.modal-box svg{width:100%;height:auto;border:1px solid var(--line);border-radius:4px;display:block}
-    .hidden{display:none!important}.dash table{width:100%;border-collapse:collapse;font-size:14px}.dash th,.dash td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line);white-space:nowrap}.dash th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.dash tr.row{cursor:pointer}.dash tr.row:hover{background:var(--soft)}.mini{padding:6px 12px;font-size:12px}.review-actions{flex-wrap:wrap}
-    .print-sheet{display:none}
-    @media print{@page{size:A4 portrait;margin:7mm}body{background:#fff}.rail,.topbar,.form-card,.review-top,.review-actions,.preview-note{display:none!important}.app,.main,.workspace{display:block;padding:0}.review{display:block;box-shadow:none;border:0;padding:0}.print-sheet{display:grid;grid-template-rows:repeat(3,1fr);gap:5mm}.print-sheet .mini-note{display:block;width:100%;font-size:8px}.print-sheet .mini-head{padding:5px}.print-sheet .mini-head .title{font-size:17px}.print-sheet .mini-head small{font-size:6px}.print-sheet .mini-meta div,.print-sheet .mini-row{min-height:18px}.print-sheet .mini-row b,.print-sheet .mini-meta b,.print-sheet .mini-table th{font-size:7px}.print-sheet .mini-table td,.print-sheet .mini-table th{padding:2px;height:15px}.print-sheet .mini-bottom{min-height:26px}.print-sheet .mini-bottom div{padding:3px}}
-  /*EXTRA*/
-    .main{max-width:1560px}
-    .form-card{padding:20px 24px}
-    .sect{margin-bottom:20px}.sect:last-of-type{margin-bottom:6px}
-    .sect h4{margin:0 0 10px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--orange)}
-    .dash tr.more-row td{text-align:center;border-bottom:0;padding-top:16px}
-    .ewb-row{display:flex;gap:6px}.ewb-row input{min-width:0;flex:1}.ewb-row .mini{flex:none}
-    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:11px 14px}
-    .grid .field.w2{grid-column:span 2}
-    .field{gap:5px}.field label{font-size:12px}
-    input,select{padding:9px 11px;font-size:13.5px;border-radius:8px;width:100%}
-    select{appearance:auto}
-    .actions{margin-top:18px;padding-top:16px;gap:16px}
-    .totalbox{background:var(--soft);border-radius:10px;padding:10px 16px;font-weight:700;color:var(--muted)}.totalbox b{color:var(--ink);margin-left:8px;font-size:16px}
-    .nav{display:grid;gap:8px}.navbtn{background:transparent;color:#c2d3e6;border:1px solid #3d6595;text-align:left}.navbtn.active{background:var(--orange);border-color:var(--orange);color:#fff}
-    .title-row{display:flex;align-items:center;gap:16px}.newbtn{padding:9px 16px;font-size:13px}
-    .tabs{display:flex;gap:6px}.tab{background:#fff;color:var(--navy);border:1px solid var(--line);padding:8px 18px;letter-spacing:.04em}.tab:hover{background:#edf3f8}.tab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
-    .lr-top{display:flex;justify-content:flex-end;margin-bottom:14px}
-    .dash table{width:100%;border-collapse:collapse;font-size:14px}.dash th,.dash td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line);white-space:nowrap}.dash th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.dash tr.row{cursor:pointer}.dash tr.row:hover{background:var(--soft)}
-    .mini{padding:6px 12px;font-size:12px;transition:.15s}.mini:hover{background:var(--orange);color:#fff}
-    .modal{position:fixed;inset:0;background:rgba(16,37,62,.55);display:flex;align-items:flex-start;justify-content:center;padding:28px 16px;overflow:auto;z-index:50}
-    .modal-box{background:#fff;border-radius:18px;padding:22px 24px;width:100%;max-width:680px;box-shadow:0 20px 60px rgba(0,0,0,.3)}.modal-box.wide{max-width:820px}
-    .modal-box h3{margin:0 0 4px;font-size:21px}.modal-box .sub{color:var(--muted);margin:0 0 16px}
-    .modal-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;position:sticky;top:-22px;background:#fff;padding:2px 0 12px;margin:-2px 0 4px;z-index:2}
-    .modal-btns{display:flex;gap:8px;flex-wrap:wrap}.modal-btns button{padding:10px 18px}
-    .pages svg{width:100%;height:auto;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:14px}
-    .modal .fields{gap:14px;grid-template-columns:repeat(2,1fr)}.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
-    .picker{position:relative}.dd{position:static;box-shadow:none;margin-top:6px;background:#fff;border:1px solid var(--line);border-radius:10px;max-height:220px;overflow:auto}
-    .dd div{padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;gap:12px;font-size:14px}.dd div:hover{background:#fff4ea}.dd small{color:var(--muted)}.dd .none{color:var(--muted);cursor:default}.dd .none:hover{background:none}.dd .addall{font-weight:800;color:var(--orange);border-bottom:1px solid var(--line)}
-    .selcount{margin:10px 0 0;font-size:13px;color:var(--muted)}.selcount a{color:var(--orange)}
-    .chips{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 8px;max-height:130px;overflow-y:auto}.chips:empty{display:none}.chip{background:#fff4ea;border:1px solid #f9c79d;color:#8a3d00;border-radius:999px;padding:6px 8px 6px 12px;font-size:13px;font-weight:700;display:flex;gap:8px;align-items:center}.chip.more{padding:6px 12px;background:#f5f8fb;border-color:var(--line);color:var(--muted)}.chip button{padding:0 6px;background:none;color:#8a3d00;font-size:16px;line-height:1}
-    .btn-primary{transition:.15s}.btn-primary:active{transform:scale(.97)}.btn-primary.working{background:#2c9a67;cursor:progress}
-    .donebtns{display:flex;gap:10px}.donebtns button{padding:12px 20px}
-    .pk-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}.pk-bar input[type=text]{flex:1;min-width:240px}.pk-only{display:flex;gap:6px;align-items:center;font-size:13px;font-weight:700;margin-left:auto;cursor:pointer}.pk-only input{width:auto}
-    .pk-list{border:1px solid var(--line);border-radius:10px;max-height:min(46vh,480px);overflow:auto;background:#fff}
-    .pk-row{display:grid;grid-template-columns:26px 92px 1.1fr 1.2fr 1.2fr 84px;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);font-size:13px;cursor:pointer;user-select:none}.pk-row:hover{background:#fff4ea}.pk-row.on{background:#ffe9d2}
-    .pk-row input{width:auto;margin:0;pointer-events:none}.pk-row .g{font-weight:800}.pk-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pk-row .d{color:var(--muted)}
-    .pk-head{position:sticky;top:0;background:#f5f8fb;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:default;z-index:1}.pk-head:hover{background:#f5f8fb}
-    .pk-note{padding:16px;color:var(--muted);text-align:center;font-size:13px}.pk-status{margin:10px 0 14px;font-weight:800}
-    .modal-actions.sticky{position:sticky;bottom:-22px;background:#fff;padding:12px 0 2px;border-top:1px solid var(--line);align-items:center}.pk-count{margin-right:auto;font-weight:800;color:var(--orange)}
-    .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}.toolbar input{width:260px}.toolbar select{width:auto;min-width:170px;background:#fff}.gccount{margin-left:auto;color:var(--muted);font-size:13px;font-weight:700}
-    /* hover = a different colour per button kind; pressed = green (kept ~0.7s after a click via .pressed) */
-    button{transition:background-color .18s,color .18s,border-color .18s,box-shadow .18s,transform .12s,filter .18s}
-    .btn-primary:hover{background:#1d63d8;color:#fff;filter:none;box-shadow:0 6px 16px rgba(29,99,216,.4);transform:translateY(-1px)}
-    .btn-primary:active,.btn-primary.pressed{background:#15803d;color:#fff;filter:none;box-shadow:none;transform:scale(.97)}
-    .btn-secondary:not(.mini):hover{background:#0e9f8e;color:#fff;box-shadow:0 5px 14px rgba(14,159,142,.35)}
-    .btn-secondary:not(.mini):active,.btn-secondary:not(.mini).pressed{background:#15803d;color:#fff;box-shadow:none;transform:scale(.97)}
-    .btn-ghost:hover{background:#fcd34d;color:#3b2a00}
-    .btn-ghost:active,.btn-ghost.pressed{background:#15803d;color:#fff;transform:scale(.97)}
-    .navbtn:hover{background:#0e9f8e;border-color:#0e9f8e;color:#fff}
-    .navbtn:active,.navbtn.pressed{background:#15803d;border-color:#15803d;color:#fff;transform:scale(.98)}
-    .navbtn.active:hover{background:#1d63d8;border-color:#1d63d8;color:#fff;filter:none}
-    .tab:hover{background:#0e9f8e;border-color:#0e9f8e;color:#fff}
-    .tab:active,.tab.pressed{background:#15803d;border-color:#15803d;color:#fff;transform:scale(.97)}
-    .tab.active:hover{background:#7c3aed;border-color:#7c3aed;color:#fff}
-    .mini:hover{background:#7c3aed;color:#fff}
-    .mini:active,.mini.pressed{background:#15803d;color:#fff;transform:scale(.95)}
-    .chip button:hover{color:#c62828}
-    .pk-row:active{background:#ffd7b0}.dash tr.row:active{background:#e1ecf6}
-    .btn-primary.working,.btn-primary.working:hover{background:#2c9a67;box-shadow:none;transform:none}
-    button:disabled:hover{filter:none;box-shadow:none;transform:none}
-    /* left menu stays put while the page scrolls */
-    .rail{position:sticky;top:0;height:100vh;align-self:start;overflow-y:auto}
-    @media(max-width:1020px){.rail{position:static;height:auto;overflow:visible}}
-    .hidden{display:none!important}
-    @media(max-width:1180px){.grid{grid-template-columns:repeat(2,1fr)}}
-    @media(max-width:650px){.grid{grid-template-columns:1fr}.grid .field.w2{grid-column:auto}.modal .fields{grid-template-columns:1fr}}
-    .pay-sel{width:auto;min-width:130px;background:#fff}.save-pay{padding:6px 12px;font-size:12px;margin-left:6px}.rcv{color:#177245;font-weight:800}
-    .slip-table{width:100%;border-collapse:collapse;font-size:14px;margin-top:12px}.slip-table th,.slip-table td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}.slip-table th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.slip-table input{width:110px}.slip-table .x{padding:2px 9px;background:none;color:#c62828;font-size:18px}
-    /* login + branches */
-    .login{position:fixed;inset:0;background:linear-gradient(135deg,#0c3b6f,#16508f);display:grid;place-items:center;padding:20px;z-index:100;overflow:auto}
-    .login-card{background:#fff;border-radius:18px;padding:30px 28px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.35);display:grid;gap:14px}
-    .login-card .brand{color:var(--navy)}.login-card .brand-mark{border-color:var(--navy)}.login-card h2{margin:0;font-size:24px}.login-card .sub{margin:0;color:var(--muted)}
-    .lg-err{color:#b3261e;font-weight:700;font-size:13px;min-height:0}.lg-err:empty{display:none}
-    .whoami{color:#fff;font-size:13px;line-height:1.5;margin-bottom:10px}.whoami small{color:#a9c1dc;display:block}.logout{width:100%;padding:9px 12px;font-size:13px;background:transparent;color:#c2d3e6;border:1px solid #3d6595}.logout:hover{background:#c62828;border-color:#c62828;color:#fff}
-    .scope{display:grid;gap:6px}.scope label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#a9c1dc}.scope select{background:#fff;padding:9px 10px}
-    .emp .adm{display:none!important}
-    .keep-note{display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:14px 18px;margin-bottom:18px;font-size:13px;line-height:1.5}.keep-note>div:first-child{flex:1 1 320px}.keep-act{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    .acc-lbl{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px}
-    .acc-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:22px}.acc-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:0 8px 24px rgba(21,52,80,.06)}.acc-card small{display:block;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}.acc-card b{font-size:24px}.acc-card.big{background:var(--navy);border-color:var(--navy);color:#fff}.acc-card.big small{color:#a9c1dc}
-    .acc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px;margin-bottom:22px}.acc-grid h3,.acc-h{margin:0 0 10px;font-size:16px}.dash td.num,.dash th.num{text-align:right}.dash tr.tot td{font-weight:800;border-top:2px solid var(--ink)}
-    body:not(.emp) #mode{display:none}.scopeSel{width:auto;min-width:200px;background:#fff;font-weight:700;color:var(--navy)}
-    .rail-footer{margin-top:auto}
-    .chip-st{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:800}.chip-st.ok{background:#e9f7ef;color:#177245}.chip-st.off{background:#fdeceb;color:#b3261e}.chip-st.wait{background:#fff4ea;color:#8a3d00}
-    .br-meta{color:var(--muted);margin:6px 0 0}.br-actions{display:flex;gap:8px;flex-wrap:wrap}.br-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:20px}.br-head h2{margin:0 0 4px;font-size:26px}
-    .br-sec{display:flex;justify-content:space-between;align-items:center;margin:22px 0 12px}.br-sec h3{margin:0;font-size:18px}.dash td .mini{margin-right:4px}
-    .miss{color:#b3261e;font-weight:800}.dash tr.is-missing td{background:#fff6f5}
-    .rcv-list{display:grid;gap:8px;margin:12px 0 4px;max-height:min(42vh,420px);overflow:auto}.rcv-list:empty{display:none}
-    .rcv-item{display:grid;grid-template-columns:auto 1fr auto auto;gap:12px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 10px 8px 14px;background:#fff}
-    .rcv-item.missing{border-color:#f3b4ae;background:#fff6f5}.rcv-who{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}.seg button{padding:6px 12px;font-size:12px;font-weight:800;background:#fff;color:var(--muted);border-radius:0}
-    .seg button.on[data-v="0"]{background:#2c9a67;color:#fff}.seg button.on[data-v="1"]{background:#c62828;color:#fff}
-    .rcv-item .x{padding:2px 9px;background:none;color:#c62828;font-size:18px}
-    @media(max-width:650px){.rcv-item{grid-template-columns:1fr auto}.rcv-who{grid-column:1/-1;grid-row:2}}
-    .wallet{display:flex;gap:18px 28px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:16px 20px;margin-bottom:6px;border-left:5px solid #2c9a67}
-    .wallet small{display:block;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px}.wallet b{font-size:24px;margin-right:10px}
-    .wallet.low{border-left-color:#c62828;background:#fff6f5}.wl-stats{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--muted)}.wl-stats b{font-size:14px;color:var(--ink);margin-left:4px}
-    .wl-err{color:#b3261e;font-weight:700}.wl-note{color:var(--muted);font-size:12px;margin:0 0 18px}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Sabri Logistics · Goods Transport across Gujarat | Veraval</title>
+  <meta name="description" content="Sabri Logistics is a goods transport and parcel booking company based in Veraval, Gujarat, with branches in Surat, Jetpur and Ahmedabad. Part load, full truck load and door delivery.">
+  <link rel="icon" href="assets/logo.png">
+  <link rel="stylesheet" href="site.css?v=20261119a">
 </head>
 <body>
-  <div class="app hidden" id="appRoot">
-    <aside class="rail">
-      <div class="brand"><div class="brand-mark">SL</div><strong>SABRI<br>LOGISTICS</strong></div>
-      <div><div class="eyebrow">Consignment desk</div><h1>New goods<br>receipt</h1></div>
-      <p>Fill in the details on one page, then press Finish entry to save and get the receipt.</p>
-      <div class="nav"><button type="button" class="navbtn" id="navDash">Dashboard</button><button type="button" class="navbtn active" id="navNew">New entry</button><button type="button" class="navbtn adm" id="navBranches">Branches</button></div>
-      <div class="rail-footer"><div class="whoami" id="whoami"></div><button type="button" class="logout" id="logoutBtn">Log out</button></div>
-    </aside>
-    <main class="main">
-      <div id="viewNew">
-        <div class="topbar"><div><div class="title-row"><h2 id="heading">Consignment entry</h2><button type="button" class="btn-primary newbtn" id="newEntryBtn">Create New Entry</button></div><p id="entryHint">Create a clean, print-ready GC receipt in under a minute.</p></div><div class="badge">Draft</div><select class="scopeSel adm" aria-label="Branch"></select></div>
-        <section class="card form-card">
-          <form id="entryForm">
-            <div id="fields"></div>
-            <div class="actions"><div class="totalbox">Total<b id="totalOut">0.00</b></div><div><button type="submit" class="btn-primary" id="nextBtn">Finish entry</button><div class="donebtns hidden" id="doneBtns"><button type="button" class="btn-secondary" id="doneView">View</button><button type="button" class="btn-secondary" id="donePdf">Download PDF</button><button type="button" class="btn-secondary" id="donePrint">Print</button><button type="button" class="btn-secondary" id="doneWa">Send on WhatsApp</button></div></div></div>
-          </form>
-        </section>
+  <header class="top"><div class="wrap">
+    <a class="logo" href="/"><img src="assets/logo.png" alt="Sabri Logistics logo" width="68" height="44"><b>SABRI LOGISTICS</b></a>
+    <nav class="nav"><a href="#services">Services</a><a href="#network">Branches</a><a href="#about">About</a><a href="#contact">Contact</a><a class="btn sec" href="/app">Staff login</a></nav>
+  </div></header>
+
+  <div class="hero"><div class="wrap">
+    <div>
+      <div class="eyebrow">Goods transport · Gujarat</div>
+      <h1>Reliable transport for your goods, from booking to delivery.</h1>
+      <p>Sabri Logistics carries parcels, cartons and full loads between Veraval, Surat, Jetpur, Ahmedabad and towns across Gujarat, with a proper GC receipt for every consignment.</p>
+      <div class="cta"><a class="btn pri" href="#contact">Book a consignment</a><a class="btn ghost" href="tel:+919998622244">Call +91 99986 22244</a></div>
+    </div>
+    <div class="hero-card">
+      <h3>Why businesses choose us</h3>
+      <ul>
+        <li>Printed GC (goods consignment) receipt for every booking</li>
+        <li>Receipt sent to the consignor on WhatsApp</li>
+        <li>Paid, To-Pay and To-be-Billed options</li>
+        <li>Door delivery at the destination on request</li>
+        <li>GST-registered transporter</li>
+      </ul>
+    </div>
+  </div></div>
+
+  <section id="services"><div class="wrap">
+    <div class="sec-head"><div class="eyebrow" style="color:var(--orange)">What we do</div><h2>Transport services</h2><p>From a single bundle to a full truck, we book, carry and deliver it with clear paperwork.</p></div>
+    <div class="grid3">
+      <div class="card"><div class="ic">&#128230;</div><h3>Parcel &amp; part load</h3><p>Bags, boxes, cartons, rolls and bundles booked at any branch and delivered to the destination godown.</p></div>
+      <div class="card"><div class="ic">&#128667;</div><h3>Full truck load</h3><p>Dedicated vehicles for larger consignments, with a lorry receipt (LR) listing every GC on board.</p></div>
+      <div class="card"><div class="ic">&#127968;</div><h3>Door delivery</h3><p>Goods delivered from our godown to the consignee's door, with a delivery slip for every round.</p></div>
+      <div class="card"><div class="ic">&#129534;</div><h3>Flexible payment</h3><p>Pay at booking (Paid), let the receiver pay (To Pay), or get billed later (To be Billed) for regular customers.</p></div>
+      <div class="card"><div class="ic">&#128196;</div><h3>E-way bill support</h3><p>E-way bill and invoice details recorded on the GC so your goods move with the right documents.</p></div>
+      <div class="card"><div class="ic">&#128172;</div><h3>WhatsApp updates</h3><p>Consignors receive their GC receipt as a PDF on WhatsApp as soon as the booking is saved.</p></div>
+    </div>
+  </div></section>
+
+  <section class="alt"><div class="wrap">
+    <div class="sec-head"><div class="eyebrow" style="color:var(--orange)">How it works</div><h2>Three simple steps</h2></div>
+    <div class="grid3">
+      <div class="step"><div class="n">1</div><h3>Book at a branch</h3><p style="color:var(--muted)">Bring your goods to any Sabri Logistics branch. We weigh them and record consignor, consignee and charges.</p></div>
+      <div class="step"><div class="n">2</div><h3>Get your GC receipt</h3><p style="color:var(--muted)">You get a printed GC receipt with its GC number, and a copy on WhatsApp if you share your number.</p></div>
+      <div class="step"><div class="n">3</div><h3>Delivered</h3><p style="color:var(--muted)">Goods travel on our trucks to the destination branch and are handed over or delivered to the door.</p></div>
+    </div>
+  </div></section>
+
+  <section id="network"><div class="wrap">
+    <div class="sec-head"><div class="eyebrow" style="color:var(--orange)">Our network</div><h2>Branches</h2><p>Book at any branch; we deliver to towns across Gujarat.</p></div>
+    <div class="grid4">
+      <div class="card branch"><h3>Veraval <span class="tag">Head office</span></h3><p>Shop No. 07, Khara Kuva, Gandhi Chowk, Vegetable Market, Veraval – 362265, Dist. Gir-Somnath</p></div>
+      <div class="card branch"><h3>Surat</h3><p>Godown No. 12, Ambica Transport Compound, Nr. Mangalam Granite, Saroli Road, Surat – 395010</p></div>
+      <div class="card branch"><h3>Jetpur</h3><p>Booking &amp; delivery office<br>Ph. <a href="tel:+917016282600">+91 70162 82600</a></p></div>
+      <div class="card branch"><h3>Ahmedabad</h3><p>Booking &amp; delivery office</p></div>
+    </div>
+  </div></section>
+
+  <section id="about" class="alt"><div class="wrap about">
+    <div>
+      <div class="eyebrow" style="color:var(--orange)">About us</div>
+      <h2 style="font-size:clamp(26px,3.4vw,36px);margin:8px 0 14px;line-height:1.15">A Veraval transport company that keeps its paperwork straight</h2>
+      <p style="color:var(--muted)">Sabri Logistics is a goods transport company headquartered in Veraval (Gir-Somnath), Gujarat. We serve traders, manufacturers and shops who send goods between Saurashtra, Surat and Ahmedabad every day.</p>
+      <p style="color:var(--muted)">Every consignment gets a GC number and a printed receipt in three copies (consignor, consignee and driver). Our branches use one system for bookings, lorry receipts, inward records and delivery slips, so a consignment can always be traced.</p>
+    </div>
+    <div class="facts">
+      <div class="fact"><b>4</b><span>branches in Gujarat</span></div>
+      <div class="fact"><b>3</b><span>payment options per GC</span></div>
+      <div class="fact"><b>GST</b><span>registered transporter</span></div>
+      <div class="fact"><b>PDF</b><span>receipt on WhatsApp</span></div>
+    </div>
+  </div></section>
+
+  <section id="contact"><div class="wrap">
+    <div class="sec-head"><div class="eyebrow" style="color:var(--orange)">Contact</div><h2>Book or ask about a consignment</h2><p>Call, WhatsApp or visit the head office during working hours (Mon–Sat, 9:00 am – 8:00 pm).</p></div>
+    <div class="contact">
+      <div class="card"><dl>
+        <div><dt>Business name</dt><dd>Sabri Logistics</dd></div>
+        <div><dt>Head office</dt><dd>Shop No. 07, Khara Kuva, Gandhi Chowk, Vegetable Market, Veraval, Gir-Somnath, Gujarat – 362265, India</dd></div>
+        <div><dt>Phone</dt><dd><a href="tel:+919998622244">+91 99986 22244</a></dd></div>
+        <div><dt>WhatsApp</dt><dd><a href="https://wa.me/919274977143" rel="noopener">+91 92749 77143</a></dd></div>
+        <div><dt>Email</dt><dd><a href="mailto:sabrilogistics1@gmail.com">sabrilogistics1@gmail.com</a></dd></div>
+        <div><dt>GSTIN</dt><dd>24EPIPP7276E1ZJ</dd></div>
+      </dl></div>
+      <div class="card" style="background:var(--navy);color:#fff;border-color:var(--navy)">
+        <h3 style="margin-top:0;font-size:22px">Sending goods regularly?</h3>
+        <p style="color:#d3e1f0">Ask about To-be-Billed accounts for regular customers: book through the month and settle one bill.</p>
+        <p style="margin:22px 0 0;display:flex;gap:10px;flex-wrap:wrap"><a class="btn pri" href="tel:+919998622244">Call now</a><a class="btn ghost" href="https://wa.me/919274977143" rel="noopener">WhatsApp us</a></p>
       </div>
-      <section id="viewDash" class="hidden">
-        <div class="topbar"><div><div class="title-row"><h2>Dashboard</h2><div class="tabs"><button type="button" class="tab active" id="tabEntries">GC ENTRY</button><button type="button" class="tab" id="tabLR">REPORT</button><button type="button" class="tab" id="tabIn">INWARD</button><button type="button" class="tab" id="tabSlip">DELIVERY SLIP</button><button type="button" class="tab" id="tabAcc">ACCOUNTING</button></div></div><p id="dashHint">All GC entries saved so far. Click a row to view it.</p></div><div class="badge" id="mode"></div><select class="scopeSel adm" aria-label="Branch"></select></div>
-        <div id="paneEntries"><div class="toolbar"><input type="search" id="gcSearch" placeholder="Search by GC number" autocomplete="off"><select id="gcSort" aria-label="Sort by"><option value="">Sort: newest saved</option><option value="gcAsc">GC number: low to high</option><option value="gcDesc">GC number: high to low</option><option value="dateDesc">Date: newest first</option><option value="dateAsc">Date: oldest first</option></select><select id="gcPay" aria-label="Filter by pay type"><option value="">All pay types</option><option>Paid</option><option>To Pay</option><option>To be Billed</option></select><span class="gccount" id="gcCount"></span></div><div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>GC No</th><th>Date</th><th>From</th><th>To</th><th>Consignor</th><th>Consignee</th><th>Pay Type</th><th>Total</th><th>Saved</th><th></th></tr></thead><tbody id="rows"></tbody></table></div></div>
-        <div id="paneLR" class="hidden"><div class="lr-top"><button type="button" class="btn-primary" id="newLRBtn">Create New LR</button></div>
-          <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>Memo No</th><th>Date</th><th>From</th><th>To</th><th>Total GCs</th><th>Truck</th><th>Saved</th><th></th></tr></thead><tbody id="lrRows"></tbody></table></div></div>
-        <div id="paneIn" class="hidden"><div class="lr-top"><button type="button" class="btn-primary" id="receivedBtn">RECEIVED</button></div>
-          <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>GC No</th><th>Date</th><th>From</th><th>To</th><th>Consignor</th><th>Consignee</th><th>Pay Type</th><th>Total</th><th>Status</th></tr></thead><tbody id="inRows"></tbody></table></div></div>
-        <div id="paneSlip" class="hidden"><div class="lr-top"><button type="button" class="btn-primary" id="newSlipBtn">Create Delivery slip</button></div>
-          <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>Slip No</th><th>Date</th><th>Total GCs</th><th>Total Amount</th><th>Saved</th><th></th></tr></thead><tbody id="slipRows"></tbody></table></div></div>
-        <div id="paneAcc" class="hidden"><div class="toolbar"><label class="acc-lbl">From <input type="date" id="accFrom" style="width:auto"></label><label class="acc-lbl">To <input type="date" id="accTo" style="width:auto"></label><button type="button" class="btn-secondary mini" id="accClear">Clear dates</button><span class="gccount" id="accScope"></span></div>
-          <div class="card keep-note"><div><b>Records are kept for 60 days.</b> Every night, GCs, LRs, inward records and delivery slips older than 60 days are deleted. In the first days of each month, download the previous month as Excel and keep the file.</div>
-            <div class="keep-act"><label class="acc-lbl">Month <input type="month" id="expMonth" style="width:auto"></label><button type="button" class="btn-primary mini" id="expBtn">Download month (Excel)</button></div></div>
-          <div id="waWallet" class="adm"></div><div id="accBody"></div></div>
-      </section>
-      <section id="viewBranches" class="hidden"><div id="brBody"></div></section>
-      <div class="modal hidden" id="lrModal"><div class="modal-box" id="lrBox"></div></div>
-    </main>
-  </div>
-  <div class="login hidden" id="loginView"><form class="login-card" id="loginForm" autocomplete="on">
-    <div class="brand"><div class="brand-mark">SL</div><strong>SABRI<br>LOGISTICS</strong></div>
-    <div><h2 id="lgTitle">Sign in</h2><p class="sub" id="lgSub">Enter your phone number (employees) or email (admin).</p></div>
-    <div class="field" id="lgIdWrap"><label for="lgId">Phone number or email</label><input id="lgId" name="username" autocomplete="username" autocapitalize="off" spellcheck="false"></div>
-    <div class="field hidden" id="lgPwWrap"><label for="lgPw" id="lgPwLabel">Password</label><input id="lgPw" name="password" type="password" autocomplete="current-password"></div>
-    <div class="field hidden" id="lgPw2Wrap"><label for="lgPw2">Confirm password</label><input id="lgPw2" type="password" autocomplete="new-password"></div>
-    <div class="lg-err" id="lgErr"></div>
-    <button type="submit" class="btn-primary" id="lgBtn">Continue</button>
-    <button type="button" class="btn-ghost hidden" id="lgBack">Use a different number / email</button>
-  </form></div>
-  <div class="toast" id="toast"></div>
-  <script src="app.js?v=20261119a"></script>
+    </div>
+  </div></section>
+
+  <footer><div class="wrap">
+    <div class="cols">
+      <div><h4>Sabri Logistics</h4><p style="margin:0">Goods transport &amp; parcel booking.<br>Shop No. 07, Khara Kuva, Gandhi Chowk, Veraval – 362265, Gujarat, India.<br>GSTIN 24EPIPP7276E1ZJ</p></div>
+      <div><h4>Company</h4><ul><li><a href="#services">Services</a></li><li><a href="#network">Branches</a></li><li><a href="#about">About us</a></li><li><a href="#contact">Contact</a></li></ul></div>
+      <div><h4>Legal</h4><ul><li><a href="/privacy">Privacy policy</a></li><li><a href="/terms">Terms of service</a></li><li><a href="/app">Staff login</a></li></ul></div>
+    </div>
+    <div class="legal"><span>&copy; 2026 Sabri Logistics. All rights reserved.</span><span>Subject to Veraval jurisdiction.</span></div>
+  </div></footer>
 </body>
 </html>
