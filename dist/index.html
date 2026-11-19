@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Sabri Logistics · Consignment Entry</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="config.js"></script><script src="receipt-template.js?v=20261117g"></script><script src="receipt.js?v=20261117g"></script><script src="lr.js?v=20261117g"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="config.js?v=20261119a"></script><script src="receipt-template.js?v=20261119a"></script><script src="receipt.js?v=20261119a"></script><script src="lr.js?v=20261119a"></script><script src="slip.js?v=20261119a"></script>
   <style>
     :root{--navy:#0c3b6f;--ink:#10253e;--muted:#718096;--line:#d9e2ec;--orange:#f47b20;--soft:#f5f8fb;--white:#fff;}
     *{box-sizing:border-box} body{margin:0;background:#eef3f8;color:var(--ink);font:15px Inter,Segoe UI,Arial,sans-serif}
@@ -112,6 +112,18 @@
     .chip-st{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:800}.chip-st.ok{background:#e9f7ef;color:#177245}.chip-st.off{background:#fdeceb;color:#b3261e}.chip-st.wait{background:#fff4ea;color:#8a3d00}
     .br-meta{color:var(--muted);margin:6px 0 0}.br-actions{display:flex;gap:8px;flex-wrap:wrap}.br-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:20px}.br-head h2{margin:0 0 4px;font-size:26px}
     .br-sec{display:flex;justify-content:space-between;align-items:center;margin:22px 0 12px}.br-sec h3{margin:0;font-size:18px}.dash td .mini{margin-right:4px}
+    .miss{color:#b3261e;font-weight:800}.dash tr.is-missing td{background:#fff6f5}
+    .rcv-list{display:grid;gap:8px;margin:12px 0 4px;max-height:min(42vh,420px);overflow:auto}.rcv-list:empty{display:none}
+    .rcv-item{display:grid;grid-template-columns:auto 1fr auto auto;gap:12px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 10px 8px 14px;background:#fff}
+    .rcv-item.missing{border-color:#f3b4ae;background:#fff6f5}.rcv-who{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}.seg button{padding:6px 12px;font-size:12px;font-weight:800;background:#fff;color:var(--muted);border-radius:0}
+    .seg button.on[data-v="0"]{background:#2c9a67;color:#fff}.seg button.on[data-v="1"]{background:#c62828;color:#fff}
+    .rcv-item .x{padding:2px 9px;background:none;color:#c62828;font-size:18px}
+    @media(max-width:650px){.rcv-item{grid-template-columns:1fr auto}.rcv-who{grid-column:1/-1;grid-row:2}}
+    .wallet{display:flex;gap:18px 28px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:16px 20px;margin-bottom:6px;border-left:5px solid #2c9a67}
+    .wallet small{display:block;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px}.wallet b{font-size:24px;margin-right:10px}
+    .wallet.low{border-left-color:#c62828;background:#fff6f5}.wl-stats{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--muted)}.wl-stats b{font-size:14px;color:var(--ink);margin-left:4px}
+    .wl-err{color:#b3261e;font-weight:700}.wl-note{color:var(--muted);font-size:12px;margin:0 0 18px}
 </style>
 </head>
 <body>
@@ -141,11 +153,11 @@
         <div id="paneIn" class="hidden"><div class="lr-top"><button type="button" class="btn-primary" id="receivedBtn">RECEIVED</button></div>
           <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>GC No</th><th>Date</th><th>From</th><th>To</th><th>Consignor</th><th>Consignee</th><th>Pay Type</th><th>Total</th><th>Status</th></tr></thead><tbody id="inRows"></tbody></table></div></div>
         <div id="paneSlip" class="hidden"><div class="lr-top"><button type="button" class="btn-primary" id="newSlipBtn">Create Delivery slip</button></div>
-          <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>Slip No</th><th>Date</th><th>Total GCs</th><th>Total Amount</th><th>Saved</th></tr></thead><tbody id="slipRows"></tbody></table></div></div>
+          <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>Slip No</th><th>Date</th><th>Total GCs</th><th>Total Amount</th><th>Saved</th><th></th></tr></thead><tbody id="slipRows"></tbody></table></div></div>
         <div id="paneAcc" class="hidden"><div class="toolbar"><label class="acc-lbl">From <input type="date" id="accFrom" style="width:auto"></label><label class="acc-lbl">To <input type="date" id="accTo" style="width:auto"></label><button type="button" class="btn-secondary mini" id="accClear">Clear dates</button><span class="gccount" id="accScope"></span></div>
           <div class="card keep-note"><div><b>Records are kept for 60 days.</b> Every night, GCs, LRs, inward records and delivery slips older than 60 days are deleted. In the first days of each month, download the previous month as Excel and keep the file.</div>
             <div class="keep-act"><label class="acc-lbl">Month <input type="month" id="expMonth" style="width:auto"></label><button type="button" class="btn-primary mini" id="expBtn">Download month (Excel)</button></div></div>
-          <div id="accBody"></div></div>
+          <div id="waWallet" class="adm"></div><div id="accBody"></div></div>
       </section>
       <section id="viewBranches" class="hidden"><div id="brBody"></div></section>
       <div class="modal hidden" id="lrModal"><div class="modal-box" id="lrBox"></div></div>
@@ -162,6 +174,6 @@
     <button type="button" class="btn-ghost hidden" id="lgBack">Use a different number / email</button>
   </form></div>
   <div class="toast" id="toast"></div>
-  <script src="app.js?v=20261117g"></script>
+  <script src="app.js?v=20261119a"></script>
 </body>
 </html>

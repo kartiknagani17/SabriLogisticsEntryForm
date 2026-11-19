@@ -24,6 +24,8 @@ In the Worker, open **Settings → Variables and Secrets** and add these. Use ty
 | `WA_PHONE_ID` | your WhatsApp phone number ID (same page) |
 | `WA_TEMPLATE` | the name of your approved message template |
 | `WA_LANG` | optional, the template's language code (default `en`) |
+| `WA_WABA_ID` | WhatsApp Business Account ID (for the balance box in Accounting) |
+| `ALLOWED_ORIGINS` | optional, the site address(es), comma-separated, e.g. `https://sabrilogistics.in` |
 
 Click **Deploy** (or **Save and deploy**) after adding them.
 

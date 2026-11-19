@@ -11,6 +11,7 @@ It only needs these 3 settings, which come from Meta once the WhatsApp Business 
 | `WA_TOKEN` | permanent access token (tick **Secret**) | business.facebook.com/settings → Users → System users → Generate new token (permissions: whatsapp_business_messaging, whatsapp_business_management) |
 | `WA_PHONE_ID` | phone number ID | developers.facebook.com → My Apps → your app → WhatsApp → API Setup |
 | `WA_TEMPLATE` | name of the approved template, e.g. `gc_receipt` | WhatsApp Manager → Message templates |
+| `WA_WABA_ID` | WhatsApp Business Account ID (for the balance box in Accounting) | WhatsApp Manager → Overview (the `asset_id` in the address) or API Setup |
 
 **Where to add them:** Cloudflare dashboard → Workers & Pages → `sabri-whatsapp` → Settings →
 Variables and Secrets → Add. Paste into the Key box, one per line:
@@ -19,6 +20,7 @@ Variables and Secrets → Add. Paste into the Key box, one per line:
 WA_TOKEN=...
 WA_PHONE_ID=...
 WA_TEMPLATE=...
+WA_WABA_ID=...
 ```
 
 then tick **Secret** on `WA_TOKEN` and click **Add variable and deploy**. Nothing in the app needs to change.
@@ -32,6 +34,12 @@ verified with Meta (unverified accounts can message only ~250 new people a day; 
 
 Until this is done, GCs save normally; if a consignor WhatsApp number is typed, the app shows that sending failed.
 
-## Going live
+## WhatsApp balance box
 
-The app is not hosted yet. Publish the `dist` folder (any static host). The database (Supabase) is already updated.
+Accounting (admin) shows the WhatsApp balance = money recorded with **Add funds** minus what Meta reports as spent since
+the first top-up. Meta has no balance API, so record each top-up you make in WhatsApp Manager → Payment configurations.
+
+## Hosting
+
+The site is hosted on Vercel from this repository (`vercel.json`: serves `dist`, adds security headers). Every push to
+`main` deploys. Database changes are in `supabase-scale/` (step 5 = missing GCs, login hardening, wallet; already run).

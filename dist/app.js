@@ -289,6 +289,7 @@ $('#tabAcc').addEventListener('click', () => { setTab('acc'); loadDash(); });
 let accRows = [], accSeq = 0;
 async function loadAcc() {
   const my = ++accSeq;
+  if (isAdmin()) loadWallet();
   let rows; try { rows = await rpc('acc_totals', { p_branch: curBranch() || null, p_from: $('#accFrom').value || null, p_to: $('#accTo').value || null }); }
   catch (e) { throw new Error(isMissing(e.message) ? SETUP_MSG : e.message); }
   if (my !== accSeq) return;
@@ -297,9 +298,9 @@ async function loadAcc() {
 function renderAcc() {
   const from = $('#accFrom').value, to = $('#accTo').value, n = v => parseFloat(v) || 0, rs = v => '\u20B9 ' + fmt(v);
   const sumE = list => {
-    const t = { count: 0, total: 0, freight: 0, bc: 0, door: 0, handling: 0, other: 0, tax: 0, pay: { 'Paid': 0, 'To Pay': 0, 'To be Billed': 0 }, slips: 0, slipTotal: 0, recv: 0, recvValue: 0 };
+    const t = { count: 0, total: 0, freight: 0, bc: 0, door: 0, handling: 0, other: 0, tax: 0, pay: { 'Paid': 0, 'To Pay': 0, 'To be Billed': 0 }, slips: 0, slipTotal: 0, recv: 0, recvValue: 0, missing: 0 };
     list.forEach(r => { t.count += n(r.n); t.total += n(r.total); t.freight += n(r.freight); t.bc += n(r.bc); t.door += n(r.door); t.handling += n(r.handling); t.other += n(r.other); t.tax += n(r.tax);
-      t.pay['Paid'] += n(r.paid); t.pay['To Pay'] += n(r.topay); t.pay['To be Billed'] += n(r.billed); t.slips += n(r.slips); t.slipTotal += n(r.slipTotal); t.recv += n(r.recv); t.recvValue += n(r.recvValue); });
+      t.pay['Paid'] += n(r.paid); t.pay['To Pay'] += n(r.topay); t.pay['To be Billed'] += n(r.billed); t.slips += n(r.slips); t.slipTotal += n(r.slipTotal); t.recv += n(r.recv); t.recvValue += n(r.recvValue); t.missing += n(r.missing); });
     return t;
   };
   const t = sumE(accRows), slipTotal = t.slipTotal, grand = t.total + slipTotal, recvValue = t.recvValue;
@@ -307,7 +308,7 @@ function renderAcc() {
   $('#accScope').textContent = scopeLabel() + (from || to ? ' \u00B7 ' + (from || '\u2026') + ' to ' + (to || '\u2026') : '');
   const card = (l, v, big) => `<div class="acc-card ${big ? 'big' : ''}"><small>${l}</small><b>${v}</b></div>`;
   const row = (l, v) => `<tr><td>${l}</td><td class="num">${rs(v)}</td></tr>`;
-  let html = `<div class="acc-cards">${card('Grand total', rs(grand), true)}${card('GC charges total', rs(t.total))}${card('Delivery slip charges', rs(slipTotal))}${card('GC entries', t.count)}${card('Delivery slips', S.length)}${card('GCs received', W.length + ' \u00B7 ' + rs(recvValue))}</div>
+  let html = `<div class="acc-cards">${card('Grand total', rs(grand), true)}${card('GC charges total', rs(t.total))}${card('Delivery slip charges', rs(slipTotal))}${card('GC entries', t.count)}${card('Delivery slips', S.length)}${card('GCs received', W.length + ' \u00B7 ' + rs(recvValue))}${card('GCs missing', t.missing)}</div>
     <div class="acc-grid"><div class="card dash" style="padding:18px"><h3>By pay type</h3><table><tbody>${Object.entries(t.pay).map(([k, v]) => row(esc(k), v)).join('')}<tr class="tot"><td>Total</td><td class="num">${rs(t.total)}</td></tr></tbody></table></div>
     <div class="card dash" style="padding:18px"><h3>GC charges breakdown</h3><table><tbody>${row('Freight', t.freight)}${row('BC', t.bc)}${row('Door delivery', t.door)}${row('Handling', t.handling)}${row('Other', t.other)}${row('SGST + CGST', t.tax)}<tr class="tot"><td>Total</td><td class="num">${rs(t.total)}</td></tr></tbody></table></div></div>`;
   if (isAdmin() && !scopeBranch) {
@@ -319,12 +320,34 @@ function renderAcc() {
 const accReload = () => loadAcc().catch(err => showToast(err.message, true));
 $('#accFrom').addEventListener('change', accReload); $('#accTo').addEventListener('change', accReload);
 $('#accClear').addEventListener('click', () => { $('#accFrom').value = ''; $('#accTo').value = ''; accReload(); });
+// ---- WHATSAPP BALANCE (admin): money added to the Meta WhatsApp account minus what Meta reports as spent since then ----
+// Meta has no "balance" API, so each top-up is recorded here (Add funds) and the WhatsApp sender asks Meta for the spend.
+const waPost = async body => {
+  const x = await fetch(waURL(), { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session-token': session.token }, body: JSON.stringify(body) });
+  const j = await x.json().catch(() => ({})); if (!x.ok) throw new Error(j.error || 'Request failed'); return j;
+};
+const LOW_BAL = 200; // rupees: below this the box turns red
+async function loadWallet() {
+  const box = $('#waWallet'); if (!isAdmin()) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="card wallet"><div><small>WhatsApp (Meta) balance</small><b>Checking…</b></div></div>';
+  let w; try { w = await waPost({ action: 'usage' }); } catch (e) { w = { error: e.message }; }
+  const cur = !w.currency || w.currency === 'INR' ? '₹ ' : w.currency + ' ', money = v => cur + fmt(v);
+  const low = w.balance != null && w.balance < LOW_BAL;
+  box.innerHTML = `<div class="card wallet ${low ? 'low' : ''}">
+    <div><small>WhatsApp (Meta) balance</small><b>${w.error ? '—' : w.balance == null ? 'No funds recorded' : money(w.balance)}</b>${low ? '<span class="chip-st off">Running low — add funds</span>' : ''}</div>
+    <div class="wl-stats">${w.error ? `<span class="wl-err">${esc(w.error)}</span>` : `<span>Spent this month <b>${money(w.spentMonth || 0)}</b></span><span>Messages this month <b>${(w.sentMonth || 0).toLocaleString('en-IN')}</b></span><span>Total added <b>${money(w.added || 0)}</b></span>`}</div>
+    <div class="keep-act"><button type="button" class="btn-secondary mini" id="waRefresh">Refresh</button><button type="button" class="btn-primary mini" id="waAdd">Add funds</button></div></div>
+    <p class="wl-note">After adding money in Meta (WhatsApp Manager → Billing), record the same amount here with <b>Add funds</b>. Meta updates the spend every few hours.</p>`;
+  $('#waRefresh').onclick = loadWallet;
+  $('#waAdd').onclick = () => formModal('Add funds', 'Record money added to the Meta WhatsApp account, so the balance stays right.', [{ k: 'amount', label: 'Amount (₹) *', mode: 'decimal' }, { k: 'note', label: 'Note (optional)', ph: 'e.g. UPI 19 Nov' }],
+    async v => { const amt = parseFloat(v.amount); if (!(amt > 0)) throw new Error('Enter the amount added.'); await writeOk(await sbFetch('wa_topups', { method: 'POST', body: json({ amount: amt, note: v.note || null }) })); showToast('Funds recorded'); loadWallet(); }, 'Save');
+}
 // ---- MONTHLY DOWNLOAD: everything saved in one month (India time), as an Excel file with one sheet per record type.
 // Records are deleted after 60 days, so this file is the long-term copy. ----
-const XLSX_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+const XLSX_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', XLSX_SRI = 'sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw';
 const loadScript = src => new Promise((res, rej) => {
   if (window.XLSX) return res();
-  const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load the Excel maker. Check the internet connection.')); document.head.appendChild(s);
+  const s = document.createElement('script'); s.src = src; s.integrity = XLSX_SRI; s.crossOrigin = 'anonymous'; s.onload = res; s.onerror = () => rej(new Error('Could not load the Excel maker. Check the internet connection.')); document.head.appendChild(s);
 });
 const ym = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 const prevMonth = () => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return ym(d); };
@@ -516,10 +539,13 @@ async function loadInward(append) {
 }
 function renderInward() {
   $('#inRows').innerHTML = inwards.length ? inwards.map((w, i) => {
-    const e = entryOf(w.gc_no, w.branch_id) || {}, pay = e.pay_type || '';
-    return `<tr data-i="${i}"><td class="adm">${esc(bname(w.branch_id))}</td><td>${esc(w.gc_no)}</td><td>${esc(dmy(e.entry_date))}</td><td>${esc(e.from_city)}</td><td>${esc(e.to_city)}</td><td>${esc(e.consignor)}</td><td>${esc(e.consignee)}</td>
+    const e = entryOf(w.gc_no, w.branch_id) || {}, pay = e.pay_type || '', miss = w.status === 'missing';
+    const st = miss
+      ? `<span class="miss">&#10007; Missing</span><br><button type="button" class="btn-secondary mini" data-found="${i}">Mark received</button>`
+      : `&#10003; Received<br><small style="color:var(--muted);font-weight:400">${new Date(w.created_at).toLocaleDateString('en-IN')}</small>`;
+    return `<tr data-i="${i}" class="${miss ? 'is-missing' : ''}"><td class="adm">${esc(bname(w.branch_id))}</td><td>${esc(w.gc_no)}</td><td>${esc(dmy(e.entry_date))}</td><td>${esc(e.from_city)}</td><td>${esc(e.to_city)}</td><td>${esc(e.consignor)}</td><td>${esc(e.consignee)}</td>
       <td><select class="pay-sel" data-orig="${esc(pay)}">${PAY.map(p => `<option ${p === pay ? 'selected' : ''}>${p}</option>`).join('')}</select><button type="button" class="btn-primary save-pay hidden">Save</button></td>
-      <td>${e.total != null ? fmt(e.total) : ''}</td><td class="rcv">&#10003; Received<br><small style="color:var(--muted);font-weight:400">${new Date(w.created_at).toLocaleDateString('en-IN')}</small></td></tr>`;
+      <td>${e.total != null ? fmt(e.total) : ''}</td><td class="${miss ? '' : 'rcv'}">${st}</td></tr>`;
   }).join('') + moreRow(inMore, 10) : '<tr><td colspan="10">Nothing received yet. Use RECEIVED to add GC numbers.</td></tr>';
 }
 $('#inRows').addEventListener('change', e => { const s = e.target.closest('.pay-sel'); if (s) s.parentElement.querySelector('.save-pay').classList.toggle('hidden', s.value === s.dataset.orig); });
@@ -532,31 +558,56 @@ $('#inRows').addEventListener('click', async e => {
   catch (err) { showToast('Save failed: ' + err.message, true); }
   b.disabled = false; b.textContent = 'Save';
 });
+$('#inRows').addEventListener('click', async e => {
+  const b = e.target.closest('[data-found]'); if (!b) return;
+  const w = inwards[+b.dataset.found]; b.disabled = true; b.textContent = 'Saving…';
+  try {
+    const x = await sbFetch(`inwards?id=eq.${w.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'received', created_at: new Date().toISOString() }) });
+    if (!x.ok) throw new Error(await x.text());
+    showToast(`GC ${w.gc_no} marked received`); loadInward().catch(err => showToast(err.message, true));
+  } catch (err) { showToast('Save failed: ' + err.message, true); b.disabled = false; b.textContent = 'Mark received'; }
+});
 async function openReceived() {
   let branch; try { branch = needBranch(); } catch (err) { showToast(err.message, true); return; }
   openModal(false);
   const chosen = [];
-  // the branch's GCs matching the search that are not received yet and not already picked
+  // the branch's GCs matching the search that are not received / marked missing yet and not already picked
   const find = async q => {
-    const hits = (await store.search(branch, q, 60)).filter(e => !chosen.includes(String(e.gc_no)));
+    const hits = (await store.search(branch, q, 60)).filter(e => !chosen.some(c => c.gc === String(e.gc_no)));
     if (!hits.length) return hits;
     const have = new Set((await getJSON(`inwards?select=gc_no&branch_id=eq.${branch}&gc_no=${inList(hits.map(e => e.gc_no))}`)).map(w => String(w.gc_no)));
     return hits.filter(e => !have.has(String(e.gc_no)));
   };
-  lrBox.innerHTML = `<h3>Received</h3><p class="sub">Search a GC number, pick it from the list, then press ADD.</p>
+  // chosen: [{ gc, missing }] - each picked GC is saved as received, or as missing when its "Missing" switch is on
+  lrBox.innerHTML = `<h3>Received</h3><p class="sub">Search a GC number and pick it from the list. Tap <b>Missing</b> on a GC that did not arrive, then press SAVE.</p>
     <div class="picker"><input type="text" id="rcvSearch" placeholder="Search GC number, consignor or consignee" autocomplete="off"><div class="dd" id="rcvDd"></div></div>
-    <div class="chips" id="rcvChips"></div>
-    <div class="modal-actions"><button type="button" class="btn-secondary" id="rcvCancel">Cancel</button><button type="button" class="btn-primary" id="rcvAdd">ADD</button></div>`;
+    <div class="rcv-list" id="rcvChips"></div>
+    <div class="modal-actions sticky"><span class="pk-count" id="rcvCount"></span><button type="button" class="btn-secondary" id="rcvCancel">Cancel</button><button type="button" class="btn-primary" id="rcvAdd">SAVE</button></div>`;
   const chips = $('#rcvChips');
-  const drawChips = () => { chips.innerHTML = chosen.map((g, i) => `<span class="chip">${esc(g)}<button type="button" data-x="${i}">&times;</button></span>`).join(''); };
-  gcSearchBox($('#rcvSearch'), $('#rcvDd'), find, e => { if (!chosen.includes(String(e.gc_no))) chosen.push(String(e.gc_no)); drawChips(); });
-  chips.onclick = ev => { const x = ev.target.dataset.x; if (x != null) { chosen.splice(+x, 1); drawChips(); } };
+  const drawChips = () => {
+    chips.innerHTML = chosen.length ? chosen.map((c, i) => `<div class="rcv-item ${c.missing ? 'missing' : ''}"><b>${esc(c.gc)}</b><span class="rcv-who">${esc(c.who)}</span>
+      <div class="seg"><button type="button" class="${c.missing ? '' : 'on'}" data-st="${i}" data-v="0">&#10003; Received</button><button type="button" class="${c.missing ? 'on' : ''}" data-st="${i}" data-v="1">&#10007; Missing</button></div>
+      <button type="button" class="x" data-x="${i}" title="Remove">&times;</button></div>`).join('') : '';
+    const m = chosen.filter(c => c.missing).length, r = chosen.length - m;
+    $('#rcvCount').textContent = chosen.length ? [r && `${r} received`, m && `${m} missing`].filter(Boolean).join(' · ') : '';
+  };
+  gcSearchBox($('#rcvSearch'), $('#rcvDd'), find, e => { if (!chosen.some(c => c.gc === String(e.gc_no))) chosen.push({ gc: String(e.gc_no), who: `${e.consignor || ''} → ${e.consignee || ''}`, missing: false }); drawChips(); });
+  chips.onclick = ev => {
+    const t = ev.target.closest('button'); if (!t) return;
+    if (t.dataset.x != null) chosen.splice(+t.dataset.x, 1);
+    else if (t.dataset.st != null) chosen[+t.dataset.st].missing = t.dataset.v === '1';
+    drawChips();
+  };
   $('#rcvCancel').onclick = closeModal; $('#rcvSearch').focus();
   $('#rcvAdd').onclick = async () => {
     if (!chosen.length) { showToast('Pick at least one GC number', true); return; }
-    const b = $('#rcvAdd'); b.disabled = true; b.textContent = 'Adding…';
-    try { await inwardStore.add(chosen.map(g => ({ gc_no: g }))); closeModal(); showToast(`${chosen.length} GC${chosen.length > 1 ? 's' : ''} marked received`); loadInward().catch(err => showToast(err.message, true)); }
-    catch (err) { showToast(err.message, true); b.disabled = false; b.textContent = 'ADD'; }
+    const b = $('#rcvAdd'); b.disabled = true; b.textContent = 'Saving…';
+    try {
+      await inwardStore.add(chosen.map(c => ({ gc_no: c.gc, status: c.missing ? 'missing' : 'received' })));
+      const m = chosen.filter(c => c.missing).length, r = chosen.length - m;
+      closeModal(); showToast([r && `${r} GC${r > 1 ? 's' : ''} marked received`, m && `${m} marked missing`].filter(Boolean).join(', '));
+      loadInward().catch(err => showToast(err.message, true));
+    } catch (err) { showToast(err.message, true); b.disabled = false; b.textContent = 'SAVE'; }
   };
 }
 $('#receivedBtn').addEventListener('click', openReceived);
@@ -565,8 +616,32 @@ $('#receivedBtn').addEventListener('click', openReceived);
 async function loadSlips(append) {
   const res = await slipStore.page(append ? slips.length : 0);
   slips = append ? slips.concat(res.rows) : res.rows; slipMore = res.more;
-  $('#slipRows').innerHTML = slips.length ? slips.map(s => `<tr><td class="adm">${esc(bname(s.branch_id))}</td><td>${esc(s.slip_no)}</td><td>${esc(dmy(s.slip_date))}</td><td>${(s.gc_numbers || []).length}</td><td>${fmt(s.total)}</td><td>${new Date(s.created_at).toLocaleString('en-IN')}</td></tr>`).join('') + moreRow(slipMore, 6) : '<tr><td colspan="6">No delivery slips yet. Use Create Delivery slip.</td></tr>';
+  $('#slipRows').innerHTML = slips.length ? slips.map((s, i) => `<tr class="row" data-i="${i}"><td class="adm">${esc(bname(s.branch_id))}</td><td>${esc(s.slip_no)}</td><td>${esc(dmy(s.slip_date))}</td><td>${(s.gc_numbers || []).length}</td><td>${fmt(s.total)}</td><td>${new Date(s.created_at).toLocaleString('en-IN')}</td><td>${actions}</td></tr>`).join('') + moreRow(slipMore, 7) : '<tr><td colspan="7">No delivery slips yet. Use Create Delivery slip.</td></tr>';
 }
+// the full slip (all its rows) for the A4 sheet; older slips did not store the parties, so they are read from the GCs
+async function slipDoc(id) {
+  const full = (await getJSON(`delivery_slips?select=slip_no,slip_date,branch_id,data&id=eq.${id}`))[0];
+  if (!full) throw new Error('This delivery slip is no longer saved.');
+  let rows = Array.isArray(full.data) ? full.data : [];
+  const need = rows.filter(r => !r.consignor && !r.consignee).map(r => r.gc);
+  if (need.length) {
+    let ents = []; try { ents = await store.byGcs(full.branch_id, need, 'gc_no,consignor,consignee'); } catch (e) {}
+    const by = new Map(ents.map(e => [String(e.gc_no), e]));
+    rows = rows.map(r => { const e = by.get(String(r.gc)); return e && !r.consignor && !r.consignee ? { ...r, consignor: e.consignor, consignee: e.consignee } : r; });
+  }
+  const bo = branchOf(full.branch_id);
+  return { slipNo: full.slip_no, date: full.slip_date, branchName: bo.name || '', branchAddress: bo.address || '', branchPhone: (bo.delivery_ph || bo.booking_ph || '').trim(), rows };
+}
+const slipPagesFn = slip => async inline => slipPages(slip, inline ? await inlineImgs() : undefined);
+$('#slipRows').addEventListener('click', async e => {
+  const tr = e.target.closest('tr.row'); if (!tr) return; const s = slips[tr.dataset.i], a = e.target.dataset.a;
+  try {
+    const d = await slipDoc(s.id);
+    if (a === 'pdf') return await svgToPDF(slipPages(d, await inlineImgs()), `Delivery-Slip-${s.slip_no}.pdf`);
+    if (a === 'print') return svgPrint(slipPages(d, await inlineImgs()), `Delivery Slip ${s.slip_no}`);
+    await showDoc('Delivery slip ' + s.slip_no, 'Saved delivery slip.', slipPagesFn(d), `Delivery-Slip-${s.slip_no}`);
+  } catch (err) { showToast(err.message, true); }
+});
 async function openCreateSlip() {
   let branch; try { branch = needBranch(); } catch (err) { showToast(err.message, true); return; }
   lrBox.innerHTML = '<h3>Create Delivery slip</h3><p class="sub">Loading…</p>'; openModal(true);
@@ -584,15 +659,17 @@ async function openCreateSlip() {
     sums();
   };
   gcSearchBox($('#slSearch'), $('#slDd'), async q => (await store.search(branch, q, 60)).filter(e => !rows.some(r => r.gc === String(e.gc_no))),
-    e => { if (rows.some(r => r.gc === String(e.gc_no))) return; rows.push({ gc: String(e.gc_no), units: parseFloat(e.quantity) || 0, door: '', other: '' }); draw(); });
+    e => { if (rows.some(r => r.gc === String(e.gc_no))) return; rows.push({ gc: String(e.gc_no), units: parseFloat(e.quantity) || 0, door: '', other: '', consignor: e.consignor || '', consignee: e.consignee || '' }); draw(); });
   $('#slBody').addEventListener('input', ev => { const k = ev.target.dataset.k; if (k) { rows[ev.target.closest('tr').dataset.i][k] = ev.target.value; sums(); } });
   $('#slBody').addEventListener('click', ev => { const x = ev.target.dataset.x; if (x != null) { rows.splice(+x, 1); draw(); } });
   $('#slCancel').onclick = closeModal; draw(); $('#slSearch').focus();
   $('#slCreate').onclick = async () => {
     if (!rows.length) { showToast('Add at least one GC number', true); return; }
     const b = $('#slCreate'); b.disabled = true; b.textContent = 'Creating…';
-    const data = rows.map(r => ({ gc: r.gc, units: r.units, door: parseFloat(r.door) || 0, other: parseFloat(r.other) || 0, total: tot(r) }));
-    try { await slipStore.add([{ slip_no: slipNo, slip_date: todayLocal(), gc_numbers: rows.map(r => r.gc), total: data.reduce((a, r) => a + r.total, 0), data }]); closeModal(); showToast('Delivery slip ' + slipNo + ' created'); loadSlips().catch(err => showToast(err.message, true)); }
+    const data = rows.map(r => ({ gc: r.gc, consignor: r.consignor, consignee: r.consignee, units: r.units, door: parseFloat(r.door) || 0, other: parseFloat(r.other) || 0, total: tot(r) }));
+    try { await slipStore.add([{ slip_no: slipNo, slip_date: todayLocal(), gc_numbers: rows.map(r => r.gc), total: data.reduce((a, r) => a + r.total, 0), data }]); showToast('Delivery slip ' + slipNo + ' created'); loadSlips().catch(err => showToast(err.message, true));
+      const bo = branchOf(branch);
+      await showDoc('Delivery slip ' + slipNo + ' created', 'Download, print or close.', slipPagesFn({ slipNo, date: todayLocal(), branchName: bo.name || '', branchAddress: bo.address || '', branchPhone: (bo.delivery_ph || bo.booking_ph || '').trim(), rows: data }), `Delivery-Slip-${slipNo}`); }
     catch (err) { showToast(err.message, true); b.disabled = false; b.textContent = 'Create slip'; }
   };
 }
@@ -647,6 +724,7 @@ $('#loginForm').addEventListener('submit', async e => {
       const st = await rpc('auth_status', { p_id: id }); lg.id = id;
       if (st === 'unknown') return err('No account found for this number / email. Ask the admin to add you.');
       if (st === 'inactive') return err('This account is switched off. Contact the admin.');
+      if (st === 'expired') return err('Your sign-up link has expired (7 days). Ask the admin to press Reset password for you.');
       return lgStage(st === 'set_password' ? 'set' : 'login');
     }
     const pw = $('#lgPw').value; let res;
@@ -658,7 +736,7 @@ $('#loginForm').addEventListener('submit', async e => {
     if (res.error) return err(res.error === 'LOCKED' ? 'Too many wrong attempts. Try again in 15 minutes.' : 'Wrong password.');
     session = res; try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch (x) {}
     await enterApp();
-  } catch (ex) { err(ex.message === 'INVALID_LOGIN' ? 'Could not sign in. Ask the admin.' : ex.message); }
+  } catch (ex) { err(ex.message === 'INVALID_LOGIN' ? 'Could not sign in. Ask the admin.' : /INVITE_EXPIRED/.test(ex.message) ? 'Your sign-up link has expired. Ask the admin to press Reset password for you.' : ex.message); }
   finally { btn.disabled = false; }
 });
 $('#logoutBtn').addEventListener('click', async () => { try { await rpc('auth_logout'); } catch (e) {} signOutLocal(); });
@@ -726,7 +804,7 @@ function renderBranchDetail(b) {
   $('#brBody').innerHTML = `<div class="br-head"><div><button type="button" class="btn-ghost mini" data-a="back">&larr; All branches</button><h2 style="margin-top:8px">${esc(b.name)} ${b.active ? '' : '<span class="chip-st off">Off</span>'}</h2><p class="br-meta">${[b.address, b.booking_ph && 'Booking ' + b.booking_ph, b.delivery_ph && 'Delivery ' + b.delivery_ph].filter(Boolean).map(esc).join(' &middot; ') || 'No details added yet'}</p></div>
     <div class="br-actions"><button type="button" class="btn-primary" data-a="viewData">View branch data</button><button type="button" class="btn-secondary" data-a="editBranch">Edit branch</button><button type="button" class="btn-secondary" data-a="toggleBranch">${b.active ? 'Switch off' : 'Switch on'}</button></div></div>
     <div class="br-sec"><h3>Employees (${emps.length})</h3><button type="button" class="btn-primary" data-a="addEmp">Add employee</button></div>
-    <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th>Name</th><th>Phone</th><th>Password</th><th>Status</th><th></th></tr></thead><tbody>${emps.length ? emps.map(a => `<tr data-e="${a.id}"><td><b>${esc(a.name)}</b></td><td>${esc(a.phone)}</td><td>${a.has_password ? '<span class="chip-st ok">Set</span>' : '<span class="chip-st wait">Not set yet</span>'}</td><td>${stChip(a.active)}</td><td><button type="button" class="btn-secondary mini" data-a="editEmp">Edit</button><button type="button" class="btn-secondary mini" data-a="resetEmp" ${a.has_password ? '' : 'disabled'}>Reset password</button><button type="button" class="btn-secondary mini" data-a="toggleEmp">${a.active ? 'Switch off' : 'Switch on'}</button></td></tr>`).join('') : '<tr><td colspan="5">No employees yet. Use Add employee.</td></tr>'}</tbody></table></div>`;
+    <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th>Name</th><th>Phone</th><th>Password</th><th>Status</th><th></th></tr></thead><tbody>${emps.length ? emps.map(a => `<tr data-e="${a.id}"><td><b>${esc(a.name)}</b></td><td>${esc(a.phone)}</td><td>${a.has_password ? '<span class="chip-st ok">Set</span>' : '<span class="chip-st wait">Not set yet</span>'}</td><td>${stChip(a.active)}</td><td><button type="button" class="btn-secondary mini" data-a="editEmp">Edit</button><button type="button" class="btn-secondary mini" data-a="resetEmp">Reset password</button><button type="button" class="btn-secondary mini" data-a="toggleEmp">${a.active ? 'Switch off' : 'Switch on'}</button></td></tr>`).join('') : '<tr><td colspan="5">No employees yet. Use Add employee.</td></tr>'}</tbody></table></div>`;
 }
 $('#brBody').addEventListener('click', async e => {
   const btn = e.target.closest('[data-a]'), a = btn && btn.dataset.a, rowB = e.target.closest('tr[data-b]'), rowE = e.target.closest('tr[data-e]');
@@ -753,7 +831,7 @@ $('#brBody').addEventListener('click', async e => {
     if (!emp) return;
     if (a === 'editEmp') return formModal('Edit employee', b.name, [{ k: 'name', label: 'Name *', val: emp.name }, { k: 'phone', label: 'Phone number *', val: emp.phone, mode: 'tel' }],
       async v => { const phone = normPhone(v.phone); if (!v.name) throw new Error('Name is required.'); if (phone.length !== 10) throw new Error('Enter a 10-digit phone number.'); await writeOk(await sbFetch(`accounts?id=eq.${emp.id}`, { method: 'PATCH', body: json({ name: v.name, phone }) }), 'This phone number is already registered.'); await done(); showToast('Employee updated'); });
-    if (a === 'resetEmp') { if (!confirm(`Reset the password of ${emp.name}? They will be asked to create a new one at their next sign-in.`)) return; await rpc('admin_reset_password', { p_account: emp.id }); await done(); return showToast('Password reset'); }
+    if (a === 'resetEmp') { if (!confirm(`Reset the password of ${emp.name}? They will be asked to create a new one at their next sign-in (within 7 days).`)) return; await rpc('admin_reset_password', { p_account: emp.id }); await done(); return showToast('Password reset'); }
     if (a === 'toggleEmp') { const was = emp.active; await writeOk(await sbFetch(`accounts?id=eq.${emp.id}`, { method: 'PATCH', body: json({ active: !emp.active }) })); await done(); return showToast(was ? 'Employee switched off' : 'Employee switched on'); }
   } catch (err) { showToast(err.message, true); }
 });
