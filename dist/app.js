@@ -331,9 +331,11 @@ async function loadWallet() {
   const box = $('#waWallet'); if (!isAdmin()) { box.innerHTML = ''; return; }
   box.innerHTML = '<div class="card wallet"><div><small>WhatsApp (Meta) balance</small><b>Checking…</b></div></div>';
   let w; try { w = await waPost({ action: 'usage' }); } catch (e) { w = { error: e.message }; }
+  // "out of funds": Meta reported a payment failure after the last time funds were recorded here
+  let dry = false; try { const [al, tp] = await Promise.all([getJSON('wa_alerts?select=created_at&order=created_at.desc&limit=1'), getJSON('wa_topups?select=created_at&order=created_at.desc&limit=1')]); dry = !!al.length && (!tp.length || new Date(al[0].created_at) > new Date(tp[0].created_at)); } catch (e) {}
   const cur = !w.currency || w.currency === 'INR' ? '₹ ' : w.currency + ' ', money = v => cur + fmt(v);
-  const low = w.balance != null && w.balance < LOW_BAL;
-  box.innerHTML = `<div class="card wallet ${low ? 'low' : ''}">
+  const low = dry || (w.balance != null && w.balance < LOW_BAL);
+  box.innerHTML = `${dry ? '<div class="wl-dry">&#9888; WhatsApp is out of funds: Meta could not send a message. Add money in Meta (WhatsApp Manager &rarr; Billing), then press Add funds here.</div>' : ''}<div class="card wallet ${low ? 'low' : ''}">
     <div><small>WhatsApp (Meta) balance</small><b>${w.error ? '—' : w.balance == null ? 'No funds recorded' : money(w.balance)}</b>${low ? '<span class="chip-st off">Running low — add funds</span>' : ''}</div>
     <div class="wl-stats">${w.error ? `<span class="wl-err">${esc(w.error)}</span>` : `<span>Spent this month <b>${money(w.spentMonth || 0)}</b></span><span>Messages this month <b>${(w.sentMonth || 0).toLocaleString('en-IN')}</b></span><span>Remaining <b${low ? ' class="miss"' : ''}>${w.balance == null ? '—' : money(w.balance)}</b></span>`}</div>
     <div class="keep-act"><button type="button" class="btn-secondary mini" id="waRefresh">Refresh</button><button type="button" class="btn-primary mini" id="waAdd">Add funds</button></div></div>

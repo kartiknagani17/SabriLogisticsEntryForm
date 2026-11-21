@@ -5,6 +5,8 @@
 //   SUPABASE_URL, SUPABASE_ANON_KEY  - same values as in dist/config.js (used to check the user is signed in)
 //   WA_TOKEN, WA_PHONE_ID, WA_TEMPLATE - from Meta (WhatsApp -> API Setup); WA_LANG optional, default "en"
 //   WA_WABA_ID - WhatsApp Business Account ID (for the balance box in Accounting)
+//   WA_HOOK_SECRET - long random string; Meta's webhook calls https://<this worker>/hook/<WA_HOOK_SECRET> (also its verify token).
+//     It must equal the value stored in the database table wa_state (supabase-scale/7-wa-funds-alert.sql).
 //   ALLOWED_ORIGINS - optional, comma-separated site addresses allowed to call this (default: any)
 
 let CORS = {};
@@ -52,6 +54,28 @@ async function usage(env, sess, me) {
   } catch (e) { return reply({ error: String(e.message || e) }, 502); }
 }
 
+// Meta webhook: when a message fails for a payment reason (error 131042) the dashboard is told, so it can show "out of funds".
+const FUNDS_CODES = new Set([131042]);
+const same = (a, b) => { a = String(a || ''); b = String(b || ''); if (!a || a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; };
+async function hook(req, env, url) {
+  const secret = decodeURIComponent(url.pathname.slice('/hook/'.length)), ok = same(secret, env.WA_HOOK_SECRET);
+  if (!ok) return new Response('Not found', { status: 404 });
+  if (req.method === 'GET') { // Meta's one-time check when the webhook is saved
+    return url.searchParams.get('hub.mode') === 'subscribe' && same(url.searchParams.get('hub.verify_token'), env.WA_HOOK_SECRET)
+      ? new Response(url.searchParams.get('hub.challenge') || '', { status: 200 }) : new Response('Forbidden', { status: 403 });
+  }
+  if (req.method !== 'POST') return new Response('Not found', { status: 404 });
+  try {
+    const j = await req.json(); let detail = null;
+    for (const e of j.entry || []) for (const c of e.changes || []) for (const st of c.value?.statuses || []) for (const er of st.errors || []) if (FUNDS_CODES.has(Number(er.code))) detail = `${er.code}: ${er.title || ''}`;
+    if (detail) await fetch(env.SUPABASE_URL.replace(/\/$/, '') + '/rest/v1/rpc/wa_funds_alert', {
+      method: 'POST', headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + env.SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_secret: env.WA_HOOK_SECRET, p_detail: detail }),
+    });
+  } catch (e) { /* always answer 200 so Meta does not keep retrying */ }
+  return new Response('ok', { status: 200 });
+}
+
 // base64 -> bytes without building a big intermediate array (keeps CPU time low)
 function fromBase64(b64) {
   const bin = atob(b64), out = new Uint8Array(bin.length);
@@ -62,6 +86,8 @@ function fromBase64(b64) {
 export default {
   async fetch(req, env) {
     CORS = corsFor(req, env);
+    const url = new URL(req.url);
+    if (url.pathname.startsWith('/hook/')) return await hook(req, env, url);
     if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
     if (req.method !== 'POST') return reply({ error: 'Not found' }, 404);
     try {
