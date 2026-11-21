@@ -308,7 +308,7 @@ function renderAcc() {
   $('#accScope').textContent = scopeLabel() + (from || to ? ' \u00B7 ' + (from || '\u2026') + ' to ' + (to || '\u2026') : '');
   const card = (l, v, big) => `<div class="acc-card ${big ? 'big' : ''}"><small>${l}</small><b>${v}</b></div>`;
   const row = (l, v) => `<tr><td>${l}</td><td class="num">${rs(v)}</td></tr>`;
-  let html = `<div class="acc-cards">${card('Grand total', rs(grand), true)}${card('GC charges total', rs(t.total))}${card('Delivery slip charges', rs(slipTotal))}${card('GC entries', t.count)}${card('Delivery slips', S.length)}${card('GCs received', W.length + ' \u00B7 ' + rs(recvValue))}${card('GCs missing', t.missing)}</div>
+  let html = `<div class="acc-cards">${card('Grand total', rs(grand), true)}${card('GC charges total', rs(t.total))}${card('Delivery slip charges', rs(slipTotal))}${card('GC entries', t.count)}${card('Delivery slips', S.length)}${card('GCs received', W.length + ' \u00B7 ' + rs(recvValue))}${card('Parcels missing', t.missing)}</div>
     <div class="acc-grid"><div class="card dash" style="padding:18px"><h3>By pay type</h3><table><tbody>${Object.entries(t.pay).map(([k, v]) => row(esc(k), v)).join('')}<tr class="tot"><td>Total</td><td class="num">${rs(t.total)}</td></tr></tbody></table></div>
     <div class="card dash" style="padding:18px"><h3>GC charges breakdown</h3><table><tbody>${row('Freight', t.freight)}${row('BC', t.bc)}${row('Door delivery', t.door)}${row('Handling', t.handling)}${row('Other', t.other)}${row('SGST + CGST', t.tax)}<tr class="tot"><td>Total</td><td class="num">${rs(t.total)}</td></tr></tbody></table></div></div>`;
   if (isAdmin() && !scopeBranch) {
@@ -537,15 +537,15 @@ async function loadInward(append) {
   inwards = append ? inwards.concat(res.rows) : res.rows; inMore = res.more;
   renderInward();
 }
+const qtyOf = e => parseInt(String((e && e.quantity) ?? '').replace(/\D/g, ''), 10) || 0;
 function renderInward() {
   $('#inRows').innerHTML = inwards.length ? inwards.map((w, i) => {
-    const e = entryOf(w.gc_no, w.branch_id) || {}, pay = e.pay_type || '', miss = w.status === 'missing';
-    const st = miss
-      ? `<span class="miss">&#10007; Missing</span><br><button type="button" class="btn-secondary mini" data-found="${i}">Mark received</button>`
-      : `&#10003; Received<br><small style="color:var(--muted);font-weight:400">${new Date(w.created_at).toLocaleDateString('en-IN')}</small>`;
-    return `<tr data-i="${i}" class="${miss ? 'is-missing' : ''}"><td class="adm">${esc(bname(w.branch_id))}</td><td>${esc(w.gc_no)}</td><td>${esc(dmy(e.entry_date))}</td><td>${esc(e.from_city)}</td><td>${esc(e.to_city)}</td><td>${esc(e.consignor)}</td><td>${esc(e.consignee)}</td>
+    const e = entryOf(w.gc_no, w.branch_id) || {}, pay = e.pay_type || '', miss = +w.missing_qty || 0, qty = qtyOf(e);
+    const st = `&#10003; Received<br><small style="color:var(--muted);font-weight:400">${new Date(w.created_at).toLocaleDateString('en-IN')}${qty ? ` &middot; ${Math.max(0, qty - miss)} of ${qty} parcels` : ''}</small>`;
+    const mc = miss ? `<span class="miss">${miss}</span><br><button type="button" class="btn-secondary mini" data-found="${i}">Found</button>` : '<span style="color:var(--muted)">&ndash;</span>';
+    return `<tr data-i="${i}" class="${miss ? 'is-missing' : ''}"><td class="adm">${esc(bname(w.branch_id))}</td><td>${esc(dmy(e.entry_date))}</td><td>${esc(e.from_city)}</td><td>${esc(e.to_city)}</td><td>${esc(e.consignor)}</td><td>${esc(e.consignee)}</td>
       <td><select class="pay-sel" data-orig="${esc(pay)}">${PAY.map(p => `<option ${p === pay ? 'selected' : ''}>${p}</option>`).join('')}</select><button type="button" class="btn-primary save-pay hidden">Save</button></td>
-      <td>${e.total != null ? fmt(e.total) : ''}</td><td class="${miss ? '' : 'rcv'}">${st}</td></tr>`;
+      <td>${e.total != null ? fmt(e.total) : ''}</td><td class="rcv">${st}</td><td>${mc}</td></tr>`;
   }).join('') + moreRow(inMore, 10) : '<tr><td colspan="10">Nothing received yet. Use RECEIVED to add GC numbers.</td></tr>';
 }
 $('#inRows').addEventListener('change', e => { const s = e.target.closest('.pay-sel'); if (s) s.parentElement.querySelector('.save-pay').classList.toggle('hidden', s.value === s.dataset.orig); });
@@ -562,10 +562,10 @@ $('#inRows').addEventListener('click', async e => {
   const b = e.target.closest('[data-found]'); if (!b) return;
   const w = inwards[+b.dataset.found]; b.disabled = true; b.textContent = 'Saving…';
   try {
-    const x = await sbFetch(`inwards?id=eq.${w.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'received', created_at: new Date().toISOString() }) });
+    const x = await sbFetch(`inwards?id=eq.${w.id}`, { method: 'PATCH', body: JSON.stringify({ missing_qty: 0 }) });
     if (!x.ok) throw new Error(await x.text());
-    showToast(`GC ${w.gc_no} marked received`); loadInward().catch(err => showToast(err.message, true));
-  } catch (err) { showToast('Save failed: ' + err.message, true); b.disabled = false; b.textContent = 'Mark received'; }
+    showToast(`GC ${w.gc_no}: missing parcels cleared`); loadInward().catch(err => showToast(err.message, true));
+  } catch (err) { showToast('Save failed: ' + err.message, true); b.disabled = false; b.textContent = 'Found'; }
 });
 async function openReceived() {
   let branch; try { branch = needBranch(); } catch (err) { showToast(err.message, true); return; }
@@ -578,34 +578,37 @@ async function openReceived() {
     const have = new Set((await getJSON(`inwards?select=gc_no&branch_id=eq.${branch}&gc_no=${inList(hits.map(e => e.gc_no))}`)).map(w => String(w.gc_no)));
     return hits.filter(e => !have.has(String(e.gc_no)));
   };
-  // chosen: [{ gc, missing }] - each picked GC is saved as received, or as missing when its "Missing" switch is on
-  lrBox.innerHTML = `<h3>Received</h3><p class="sub">Search a GC number and pick it from the list. Tap <b>Missing</b> on a GC that did not arrive, then press SAVE.</p>
+  // chosen: [{ gc, who, qty, missing }] - every picked GC is saved as received; "missing" is an optional count of parcels that did not arrive
+  lrBox.innerHTML = `<h3>Received</h3><p class="sub">Search a GC number and pick it from the list. If some parcels did not arrive, type how many in the <b>Missing</b> box (optional), then press SAVE.</p>
     <div class="picker"><input type="text" id="rcvSearch" placeholder="Search GC number, consignor or consignee" autocomplete="off"><div class="dd" id="rcvDd"></div></div>
     <div class="rcv-list" id="rcvChips"></div>
     <div class="modal-actions sticky"><span class="pk-count" id="rcvCount"></span><button type="button" class="btn-secondary" id="rcvCancel">Cancel</button><button type="button" class="btn-primary" id="rcvAdd">SAVE</button></div>`;
   const chips = $('#rcvChips');
+  const recvOf = c => c.qty ? Math.max(0, c.qty - c.missing) : null;
   const drawChips = () => {
     chips.innerHTML = chosen.length ? chosen.map((c, i) => `<div class="rcv-item ${c.missing ? 'missing' : ''}"><b>${esc(c.gc)}</b><span class="rcv-who">${esc(c.who)}</span>
-      <div class="seg"><button type="button" class="${c.missing ? '' : 'on'}" data-st="${i}" data-v="0">&#10003; Received</button><button type="button" class="${c.missing ? 'on' : ''}" data-st="${i}" data-v="1">&#10007; Missing</button></div>
+      <div class="rcv-qty"><span class="rcv-tot">${c.qty ? `Total ${c.qty}` : 'Total ?'}</span><label>Missing <input type="number" min="0"${c.qty ? ` max="${c.qty}"` : ''} inputmode="numeric" data-m="${i}" value="${c.missing || ''}" placeholder="0"></label><span class="rcv-got" id="rcvGot${i}">${recvOf(c) != null ? `Received ${recvOf(c)}` : ''}</span></div>
       <button type="button" class="x" data-x="${i}" title="Remove">&times;</button></div>`).join('') : '';
-    const m = chosen.filter(c => c.missing).length, r = chosen.length - m;
-    $('#rcvCount').textContent = chosen.length ? [r && `${r} received`, m && `${m} missing`].filter(Boolean).join(' · ') : '';
+    const m = chosen.reduce((a, c) => a + c.missing, 0);
+    $('#rcvCount').textContent = chosen.length ? `${chosen.length} received` + (m ? ` · ${m} parcel${m > 1 ? 's' : ''} missing` : '') : '';
   };
-  gcSearchBox($('#rcvSearch'), $('#rcvDd'), find, e => { if (!chosen.some(c => c.gc === String(e.gc_no))) chosen.push({ gc: String(e.gc_no), who: `${e.consignor || ''} → ${e.consignee || ''}`, missing: false }); drawChips(); });
-  chips.onclick = ev => {
-    const t = ev.target.closest('button'); if (!t) return;
-    if (t.dataset.x != null) chosen.splice(+t.dataset.x, 1);
-    else if (t.dataset.st != null) chosen[+t.dataset.st].missing = t.dataset.v === '1';
-    drawChips();
+  gcSearchBox($('#rcvSearch'), $('#rcvDd'), find, e => { if (!chosen.some(c => c.gc === String(e.gc_no))) chosen.push({ gc: String(e.gc_no), who: `${e.consignor || ''} → ${e.consignee || ''}`, qty: qtyOf(e), missing: 0 }); drawChips(); });
+  chips.onclick = ev => { const t = ev.target.closest('button'); if (t && t.dataset.x != null) { chosen.splice(+t.dataset.x, 1); drawChips(); } };
+  chips.oninput = ev => {
+    const t = ev.target.closest('input[data-m]'); if (!t) return;
+    const c = chosen[+t.dataset.m]; let v = Math.max(0, parseInt(t.value, 10) || 0); if (c.qty && v > c.qty) { v = c.qty; t.value = v; }
+    c.missing = v; t.closest('.rcv-item').classList.toggle('missing', v > 0);
+    const g = $('#rcvGot' + t.dataset.m); if (g) g.textContent = recvOf(c) != null ? `Received ${recvOf(c)}` : '';
+    const m = chosen.reduce((a, x) => a + x.missing, 0); $('#rcvCount').textContent = `${chosen.length} received` + (m ? ` · ${m} parcel${m > 1 ? 's' : ''} missing` : '');
   };
   $('#rcvCancel').onclick = closeModal; $('#rcvSearch').focus();
   $('#rcvAdd').onclick = async () => {
     if (!chosen.length) { showToast('Pick at least one GC number', true); return; }
     const b = $('#rcvAdd'); b.disabled = true; b.textContent = 'Saving…';
     try {
-      await inwardStore.add(chosen.map(c => ({ gc_no: c.gc, status: c.missing ? 'missing' : 'received' })));
-      const m = chosen.filter(c => c.missing).length, r = chosen.length - m;
-      closeModal(); showToast([r && `${r} GC${r > 1 ? 's' : ''} marked received`, m && `${m} marked missing`].filter(Boolean).join(', '));
+      await inwardStore.add(chosen.map(c => ({ gc_no: c.gc, status: 'received', missing_qty: c.missing })));
+      const m = chosen.reduce((a, c) => a + c.missing, 0), r = chosen.length;
+      closeModal(); showToast(`${r} GC${r > 1 ? 's' : ''} marked received` + (m ? `, ${m} parcel${m > 1 ? 's' : ''} missing` : ''));
       loadInward().catch(err => showToast(err.message, true));
     } catch (err) { showToast(err.message, true); b.disabled = false; b.textContent = 'SAVE'; }
   };
