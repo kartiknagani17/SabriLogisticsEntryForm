@@ -335,7 +335,7 @@ async function loadWallet() {
   const low = w.balance != null && w.balance < LOW_BAL;
   box.innerHTML = `<div class="card wallet ${low ? 'low' : ''}">
     <div><small>WhatsApp (Meta) balance</small><b>${w.error ? '—' : w.balance == null ? 'No funds recorded' : money(w.balance)}</b>${low ? '<span class="chip-st off">Running low — add funds</span>' : ''}</div>
-    <div class="wl-stats">${w.error ? `<span class="wl-err">${esc(w.error)}</span>` : `<span>Spent this month <b>${money(w.spentMonth || 0)}</b></span><span>Messages this month <b>${(w.sentMonth || 0).toLocaleString('en-IN')}</b></span><span>Total added <b>${money(w.added || 0)}</b></span>`}</div>
+    <div class="wl-stats">${w.error ? `<span class="wl-err">${esc(w.error)}</span>` : `<span>Spent this month <b>${money(w.spentMonth || 0)}</b></span><span>Messages this month <b>${(w.sentMonth || 0).toLocaleString('en-IN')}</b></span><span>Remaining <b${low ? ' class="miss"' : ''}>${w.balance == null ? '—' : money(w.balance)}</b></span>`}</div>
     <div class="keep-act"><button type="button" class="btn-secondary mini" id="waRefresh">Refresh</button><button type="button" class="btn-primary mini" id="waAdd">Add funds</button></div></div>
     <p class="wl-note">After adding money in Meta (WhatsApp Manager → Billing), record the same amount here with <b>Add funds</b>. Meta updates the spend every few hours.</p>`;
   $('#waRefresh').onclick = loadWallet;
