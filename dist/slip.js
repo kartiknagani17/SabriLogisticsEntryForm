@@ -1,6 +1,6 @@
 // Delivery slip as a landscape slip-size sheet (A5 landscape, 210 x 148 mm), viewed / printed / downloaded as PDF.
-const SLIP_W = 595, SLIP_H = 420, SLIP_ROWS = 12;
-const SLIP_COLS = [['Sr.', 26], ['GC No.', 62], ['Consignor', 125], ['Consignee', 125], ['Units', 40], ['Door Del.', 55], ['Other', 50], ['Amount', 72]];
+const SLIP_W = 842, SLIP_H = 420, SLIP_ROWS = 11;
+const SLIP_COLS = [['Sr.', 30], ['GC No.', 70], ['Consignor', 190], ['Consignee', 190], ['Units', 50], ['Door Del.', 75], ['Other', 70], ['Amount', 127]];
 const SLIP_X0 = 20, SLIP_Y0 = 118, SLIP_HEAD = 18, SLIP_ROW = 17;
 
 // slip: { slipNo, date, branchName, branchAddress, branchPhone, rows: [{gc, consignor, consignee, units, door, other, total}] }
@@ -12,14 +12,14 @@ function slipSVG(slip, page = 0, pages = 1, imgs = { logo: 'assets/logo.png' }) 
   let o = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SLIP_W} ${SLIP_H}" width="${SLIP_W}" height="${SLIP_H}" font-family="Arial,'Liberation Sans',Helvetica,sans-serif" style="background:#fff"><rect width="${SLIP_W}" height="${SLIP_H}" fill="#fff"/>`;
 
   // ---- letterhead ----
-  o += text(297.5, 14, 5.5, 'SUBJECT TO VERAVAL JURISDICTION', { b: 1, a: 'middle', ls: 0.4 });
-  const ph = (slip.branchPhone || '').trim(); if (ph) o += text(575, 18, 8, 'M : ' + ph, { b: 1, a: 'end' });
+  o += text(SLIP_W / 2, 14, 5.5, 'SUBJECT TO VERAVAL JURISDICTION', { b: 1, a: 'middle', ls: 0.4 });
+  const ph = (slip.branchPhone || '').trim(); if (ph) o += text(SLIP_W - 20, 18, 8, 'M : ' + ph, { b: 1, a: 'end' });
   o += `<image href="${imgs.logo}" x="20" y="20" width="54" height="35" preserveAspectRatio="xMidYMid meet"/>`;
-  o += text(297.5, 44, 22, 'Sabri Logistics', { b: 1, a: 'middle' });
+  o += text(SLIP_W / 2, 44, 22, 'Sabri Logistics', { b: 1, a: 'middle' });
   const addr = (slip.branchAddress || '').trim();
-  if (addr) { const [a, sz] = lrFit(addr, 420, 7.5, true); o += text(297.5, 60, sz, a, { b: 1, a: 'middle' }); }
-  o += `<rect x="20" y="68" width="555" height="17" fill="${ink}"/>`;
-  o += text(297.5, 80, 10, 'DELIVERY SLIP', { b: 1, a: 'middle', c: '#fff', ls: 2 });
+  if (addr) { const [a, sz] = lrFit(addr, 600, 7.5, true); o += text(SLIP_W / 2, 60, sz, a, { b: 1, a: 'middle' }); }
+  o += `<rect x="20" y="68" width="${SLIP_W - 40}" height="17" fill="${ink}"/>`;
+  o += text(SLIP_W / 2, 80, 10, 'DELIVERY SLIP', { b: 1, a: 'middle', c: '#fff', ls: 2 });
 
   // ---- slip details (one line) ----
   const field = (label, lx, x1, x2, y, val) => {
@@ -28,10 +28,10 @@ function slipSVG(slip, page = 0, pages = 1, imgs = { logo: 'assets/logo.png' }) 
     return s;
   };
   const y = 104;
-  o += field('Slip No.', 20, 56, 160, y, slip.slipNo);
-  o += field('Date :', 172, 198, 290, y, dmy(slip.date));
-  o += field('Branch :', 302, 338, 470, y, slip.branchName);
-  o += field('GCs :', 482, 506, 575, y, String((slip.rows || []).length));
+  o += field('Slip No.', 20, 56, 230, y, slip.slipNo);
+  o += field('Date :', 260, 288, 420, y, dmy(slip.date));
+  o += field('Branch :', 450, 488, 700, y, slip.branchName);
+  o += field('GCs :', 730, 754, 822, y, String((slip.rows || []).length));
 
   // ---- table ----
   const W = SLIP_COLS.reduce((a, c) => a + c[1], 0), H = SLIP_HEAD + SLIP_ROWS * SLIP_ROW;
@@ -64,10 +64,10 @@ function slipSVG(slip, page = 0, pages = 1, imgs = { logo: 'assets/logo.png' }) 
     o += text(xs[5] + SLIP_COLS[5][1] - 4, yT + 1, 8, num(sum('door')), { b: 1, a: 'end' });
     o += text(xs[6] + SLIP_COLS[6][1] - 4, yT + 1, 8, num(sum('other')), { b: 1, a: 'end' });
     o += text(xs[7] + SLIP_COLS[7][1] - 4, yT + 1, 8.5, 'Rs. ' + num(sum('total')), { b: 1, a: 'end' });
-    o += line(30, 398, 190, 398, 0.5) + text(110, 408, 7, "Receiver's Signature", { a: 'middle' });
-    o += line(405, 398, 565, 398, 0.5) + text(485, 408, 7, 'For Sabri Logistics', { a: 'middle', b: 1 });
+    o += line(40, 398, 240, 398, 0.5) + text(140, 408, 7, "Receiver's Signature", { a: 'middle' });
+    o += line(600, 398, 800, 398, 0.5) + text(700, 408, 7, 'For Sabri Logistics', { a: 'middle', b: 1 });
   }
-  if (pages > 1) o += text(575, 414, 6, `Page ${page + 1} of ${pages}`, { a: 'end' });
+  if (pages > 1) o += text(SLIP_W - 20, 414, 6, `Page ${page + 1} of ${pages}`, { a: 'end' });
   return o + '</svg>';
 }
 

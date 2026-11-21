@@ -586,8 +586,9 @@ async function openReceived() {
   const chips = $('#rcvChips');
   const recvOf = c => c.qty ? Math.max(0, c.qty - c.missing) : null;
   const drawChips = () => {
-    chips.innerHTML = chosen.length ? chosen.map((c, i) => `<div class="rcv-item ${c.missing ? 'missing' : ''}"><b>${esc(c.gc)}</b><label class="rcv-miss">Missing <input type="number" min="0"${c.qty ? ` max="${c.qty}"` : ''} inputmode="numeric" data-m="${i}" value="${c.missing || ''}" placeholder="0"></label><span class="rcv-who">${esc(c.who)}</span>
+    chips.innerHTML = chosen.length ? chosen.map((c, i) => `<div class="rcv-item ${c.missing ? 'missing' : ''}"><b>${esc(c.gc)}</b><span class="rcv-who">${esc(c.who)}</span>
       <div class="rcv-qty"><span class="rcv-tot">${c.qty ? `Total ${c.qty}` : 'Total ?'}</span><span class="rcv-got" id="rcvGot${i}">${recvOf(c) != null ? `Received ${recvOf(c)}` : ''}</span></div>
+      <label class="rcv-miss">Missing <input type="number" min="0"${c.qty ? ` max="${c.qty}"` : ''} inputmode="numeric" data-m="${i}" value="${c.missing || ''}" placeholder="0"></label>
       <button type="button" class="x" data-x="${i}" title="Remove">&times;</button></div>`).join('') : '';
     const m = chosen.reduce((a, c) => a + c.missing, 0);
     $('#rcvCount').textContent = chosen.length ? `${chosen.length} received` + (m ? ` · ${m} parcel${m > 1 ? 's' : ''} missing` : '') : '';
