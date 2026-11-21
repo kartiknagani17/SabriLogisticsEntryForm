@@ -159,11 +159,11 @@ const PDF_CHARS = /^[\x20-\x7e\xa0-\xff–—‘’‚“”„†‡•…‰�
 const pdfColor = c => { c = String(c || '#000').trim(); return /^#[0-9a-f]{3}$/i.test(c) ? '#' + [...c.slice(1)].map(h => h + h).join('') : c; };
 
 // the old way, kept for pages Helvetica cannot show: the whole page as one picture
-async function rasterPage(doc, svg, S) {
+async function rasterPage(doc, svg, S, W = 595, H = 842) {
   const img = await loadImg(svgURL(svg));
-  const c = document.createElement('canvas'); c.width = Math.round(595 * S); c.height = Math.round(842 * S);
+  const c = document.createElement('canvas'); c.width = Math.round(W * S); c.height = Math.round(H * S);
   const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
-  doc.addImage(c.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 595, 842);
+  doc.addImage(c.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, W, H);
 }
 
 // a picture placed the way the SVG places it, resampled to 4 px per point on white (as the photo did)
@@ -234,17 +234,21 @@ async function pdfNode(doc, el, tx, ty, ctx) {
   else throw new Error('PDF: cannot draw <' + n + '>');
 }
 
-// svgs: one SVG string or an array of them (one A4 page each)
+// page size in points from the SVG's own width/height (A4 portrait unless it says otherwise)
+const svgSize = svg => { const m = /<svg[^>]*?\swidth="([\d.]+)"[^>]*?\sheight="([\d.]+)"/.exec(svg); return m ? [+m[1], +m[2]] : [595, 842]; };
+// svgs: one SVG string or an array of them (one page each)
 async function svgToPDF(svgs, filename, asBase64) {
   svgs = [].concat(svgs);
-  const doc = new window.jspdf.jsPDF({ unit: 'pt', format: [595, 842], compress: true }), images = {};
+  const [W0, H0] = svgSize(svgs[0]);
+  const doc = new window.jspdf.jsPDF({ unit: 'pt', format: W0 > H0 ? [H0, W0] : [W0, H0], orientation: W0 > H0 ? 'landscape' : 'portrait', compress: true }), images = {};
   for (let i = 0; i < svgs.length; i++) {
-    if (i) doc.addPage([595, 842]);
+    const [W, H] = svgSize(svgs[i]);
+    if (i) doc.addPage(W > H ? [H, W] : [W, H], W > H ? 'landscape' : 'portrait');
     const root = new DOMParser().parseFromString(svgs[i], 'image/svg+xml').documentElement;
     const texts = [...root.querySelectorAll('text')].filter(t => !t.getAttribute('textLength'));
     if (texts.every(t => PDF_CHARS.test(t.textContent))) {
       for (const el of root.children) await pdfNode(doc, el, 0, 0, { font: root.getAttribute('font-family') || '', images });
-    } else await rasterPage(doc, svgs[i], svgs.length > 4 ? 2.5 : 4);
+    } else await rasterPage(doc, svgs[i], svgs.length > 4 ? 2.5 : 4, W, H);
     await new Promise(r => setTimeout(r)); // let the browser breathe between pages
   }
   if (asBase64) return doc.output('datauristring').split(',')[1];
@@ -253,8 +257,9 @@ async function svgToPDF(svgs, filename, asBase64) {
 
 function svgPrint(svgs, title) {
   svgs = [].concat(svgs);
+  const [W, H] = svgSize(svgs[0]), mm = v => (v * 25.4 / 72).toFixed(1) + 'mm';
   const w = window.open('');
-  w.document.write(`<title>${esc(title)}</title><style>@page{size:A4;margin:0}html,body{margin:0}.pg{break-after:page;page-break-after:always}.pg:last-child{break-after:auto;page-break-after:auto}svg{width:210mm;height:297mm;display:block}</style>${svgs.map(x => `<div class="pg">${x}</div>`).join('')}`);
+  w.document.write(`<title>${esc(title)}</title><style>@page{size:${mm(W)} ${mm(H)};margin:0}html,body{margin:0}.pg{break-after:page;page-break-after:always}.pg:last-child{break-after:auto;page-break-after:auto}svg{width:${mm(W)};height:${mm(H)};display:block}</style>${svgs.map(x => `<div class="pg">${x}</div>`).join('')}`);
   w.document.close();
   setTimeout(() => w.print(), 400);
 }
