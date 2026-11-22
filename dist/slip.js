@@ -1,9 +1,10 @@
 // Delivery slip as a landscape slip-size sheet (A5 landscape, 210 x 148 mm), viewed / printed / downloaded as PDF.
 const SLIP_W = 842, SLIP_H = 420, SLIP_ROWS = 11;
-const SLIP_COLS = [['Sr.', 30], ['GC No.', 70], ['Consignor', 190], ['Consignee', 190], ['Units', 50], ['Door Del.', 75], ['Other', 70], ['Amount', 127]];
+const SLIP_COLS = [['Sr.', 30], ['GC No.', 70], ['Consignor', 150], ['Consignee', 150], ['Units', 45], ['Door Del.', 65], ['Other', 60], ['GC Total', 100], ['Amount', 132]];
 const SLIP_X0 = 20, SLIP_Y0 = 118, SLIP_HEAD = 18, SLIP_ROW = 17;
 
-// slip: { slipNo, date, branchName, branchAddress, branchPhone, rows: [{gc, consignor, consignee, units, door, other, total}] }
+// slip: { slipNo, date, branchName, branchAddress, branchPhone, rows: [{gc, consignor, consignee, units, door, other, gcTotal, total}] }
+// Amount = door delivery x units + other + the GC's own total
 function slipSVG(slip, page = 0, pages = 1, imgs = { logo: 'assets/logo.png' }) {
   const ink = '#000', soft = '#111';
   const text = (x, y, size, str, o = {}) => `<text x="${x}" y="${y}" font-size="${size}" font-weight="${o.b ? 700 : 400}" fill="${o.c || ink}"${o.a ? ` text-anchor="${o.a}"` : ''}${o.ls ? ` letter-spacing="${o.ls}"` : ''}>${esc(str)}</text>`;
@@ -41,15 +42,15 @@ function slipSVG(slip, page = 0, pages = 1, imgs = { logo: 'assets/logo.png' }) 
   xs.slice(1).forEach(cx => { o += line(cx, SLIP_Y0, cx, SLIP_Y0 + H, 0.7, '3 2'); });
   o += line(SLIP_X0, SLIP_Y0 + SLIP_HEAD, SLIP_X0 + W, SLIP_Y0 + SLIP_HEAD, 0.7);
 
-  const left = new Set([2, 3]), right = new Set([5, 6, 7]);
+  const left = new Set([2, 3]), right = new Set([5, 6, 7, 8]);
   (slip.rows || []).slice(page * SLIP_ROWS, (page + 1) * SLIP_ROWS).forEach((r, i) => {
     const yb = SLIP_Y0 + SLIP_HEAD + i * SLIP_ROW + SLIP_ROW / 2 + 3;
     if (i) o += line(SLIP_X0, yb - SLIP_ROW / 2 - 3, SLIP_X0 + W, yb - SLIP_ROW / 2 - 3, 0.3, '1 2');
-    const cells = [page * SLIP_ROWS + i + 1, r.gc, r.consignor, r.consignee, r.units, num(r.door), num(r.other), num(r.total)];
+    const cells = [page * SLIP_ROWS + i + 1, r.gc, r.consignor, r.consignee, r.units, num(r.door), num(r.other), num(r.gcTotal), num(r.total)];
     cells.forEach((v, c) => {
       if (v === '' || v == null) return;
-      const w = SLIP_COLS[c][1] - 6, [s, sz] = lrFit(String(v), w, 8, c === 1 || c === 7);
-      const o2 = { c: soft, b: c === 1 || c === 7 };
+      const w = SLIP_COLS[c][1] - 6, [s, sz] = lrFit(String(v), w, 8, c === 1 || c === 8);
+      const o2 = { c: soft, b: c === 1 || c === 8 };
       o += left.has(c) ? text(xs[c] + 3, yb, sz, s, o2) : right.has(c) ? text(xs[c] + SLIP_COLS[c][1] - 4, yb, sz, s, { ...o2, a: 'end' }) : text(xs[c] + SLIP_COLS[c][1] / 2, yb, sz, s, { ...o2, a: 'middle' });
     });
   });
@@ -63,7 +64,8 @@ function slipSVG(slip, page = 0, pages = 1, imgs = { logo: 'assets/logo.png' }) 
     o += text(xs[4] + SLIP_COLS[4][1] / 2, yT + 1, 8, String(sum('units')), { b: 1, a: 'middle' });
     o += text(xs[5] + SLIP_COLS[5][1] - 4, yT + 1, 8, num(sum('door')), { b: 1, a: 'end' });
     o += text(xs[6] + SLIP_COLS[6][1] - 4, yT + 1, 8, num(sum('other')), { b: 1, a: 'end' });
-    o += text(xs[7] + SLIP_COLS[7][1] - 4, yT + 1, 8.5, 'Rs. ' + num(sum('total')), { b: 1, a: 'end' });
+    o += text(xs[7] + SLIP_COLS[7][1] - 4, yT + 1, 8, num(sum('gcTotal')), { b: 1, a: 'end' });
+    o += text(xs[8] + SLIP_COLS[8][1] - 4, yT + 1, 8.5, 'Rs. ' + num(sum('total')), { b: 1, a: 'end' });
     o += line(40, 398, 240, 398, 0.5) + text(140, 408, 7, "Receiver's Signature", { a: 'middle' });
     o += line(600, 398, 800, 398, 0.5) + text(700, 408, 7, 'For Sabri Logistics', { a: 'middle', b: 1 });
   }

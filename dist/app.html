@@ -93,7 +93,7 @@
     .hidden{display:none!important}
     @media(max-width:1180px){.grid{grid-template-columns:repeat(2,1fr)}}
     @media(max-width:650px){.grid{grid-template-columns:1fr}.grid .field.w2{grid-column:auto}.modal .fields{grid-template-columns:1fr}}
-    .pay-sel{width:auto;min-width:130px;background:#fff}.save-pay{padding:6px 12px;font-size:12px;margin-left:6px}.rcv{color:#177245;font-weight:800}
+    .pay-sel{width:auto;min-width:130px;background:#fff}.mode-sel{width:auto;min-width:110px;background:#fff}.save-pay{padding:6px 12px;font-size:12px;margin-left:6px}.rcv{color:#177245;font-weight:800}
     .slip-table{width:100%;border-collapse:collapse;font-size:14px;margin-top:12px}.slip-table th,.slip-table td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}.slip-table th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.slip-table input{width:110px}.slip-table .x{padding:2px 9px;background:none;color:#c62828;font-size:18px}
     /* login + branches */
     .login{position:fixed;inset:0;background:linear-gradient(135deg,#0c3b6f,#16508f);display:grid;place-items:center;padding:20px;z-index:100;overflow:auto}
@@ -153,9 +153,9 @@
         <div id="paneLR" class="hidden"><div class="lr-top"><button type="button" class="btn-primary" id="newLRBtn">Create New LR</button></div>
           <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>Memo No</th><th>Date</th><th>From</th><th>To</th><th>Total GCs</th><th>Truck</th><th>Saved</th><th></th></tr></thead><tbody id="lrRows"></tbody></table></div></div>
         <div id="paneIn" class="hidden"><div class="lr-top"><button type="button" class="btn-primary" id="receivedBtn">RECEIVED</button></div>
-          <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>Date</th><th>From</th><th>To</th><th>Consignor</th><th>Consignee</th><th>Pay Type</th><th>Total</th><th>Status</th><th>Missing</th></tr></thead><tbody id="inRows"></tbody></table></div></div>
+          <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>Date</th><th>From</th><th>To</th><th>Consignor</th><th>Consignee</th><th>Pay Type</th><th>Payment Mode</th><th>Total</th><th>Status</th><th>Missing</th></tr></thead><tbody id="inRows"></tbody></table></div></div>
         <div id="paneSlip" class="hidden"><div class="lr-top"><button type="button" class="btn-primary" id="newSlipBtn">Create Delivery slip</button></div>
-          <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>Slip No</th><th>Date</th><th>Total GCs</th><th>Total Amount</th><th>Saved</th><th></th></tr></thead><tbody id="slipRows"></tbody></table></div></div>
+          <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th class="adm">Branch</th><th>Slip No</th><th>Date</th><th>Total GCs</th><th>Delivery Total</th><th>Total Amount</th><th>Saved</th><th></th></tr></thead><tbody id="slipRows"></tbody></table></div></div>
         <div id="paneAcc" class="hidden"><div class="toolbar"><label class="acc-lbl">From <input type="date" id="accFrom" style="width:auto"></label><label class="acc-lbl">To <input type="date" id="accTo" style="width:auto"></label><button type="button" class="btn-secondary mini" id="accClear">Clear dates</button><span class="gccount" id="accScope"></span></div>
           <div class="card keep-note"><div><b>Records are kept for 60 days.</b> Every night, GCs, LRs, inward records and delivery slips older than 60 days are deleted. In the first days of each month, download the previous month as Excel and keep the file.</div>
             <div class="keep-act"><label class="acc-lbl">Month <input type="month" id="expMonth" style="width:auto"></label><button type="button" class="btn-primary mini" id="expBtn">Download month (Excel)</button></div></div>

@@ -5,6 +5,7 @@ const fmt = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits:
 
 // ---- form definition: [key, label, type, placeholder, extra class] ----
 const PAY = ['Paid', 'To Pay', 'To be Billed'];
+const PAY_MODES = ['Cash', 'UPI', 'Cheque'];
 const PKG = ['bag', 'bundle', 'box', 'carton', 'roll', 'parcel', 'homemade goods'];
 const T = 'text', N = 'number';
 const sections = [
@@ -19,7 +20,7 @@ const sections = [
     ['quantity', 'Quantity', N, 'e.g. 100'], ['packageType', 'Package Type', 'select', '', '', PKG], ['description', 'Description', T, 'e.g. Sand'], ['payableBy', 'GC Payable By', T, 'Consignee'],
     ['remarks', 'Remarks', T, 'Optional', 'w2'] ] },
   { title: 'Weight & charges', fields: [
-    ['weight', 'Wt.', N, 'e.g. 10.000'], ['chargeWeight', 'Charge Wt.', N, 'e.g. 10.000'], ['freight', 'Freight', N, '0'], ['bc', 'BC', N, '0'],
+    ['weight', 'Wt.', N, 'e.g. 500 (kg)'], ['chargeWeight', 'Charge Wt.', N, 'e.g. 500 (kg)'], ['freight', 'Freight', N, '0'], ['bc', 'BC', N, '0'],
     ['doorDelivery', 'Door Del.', N, '0'], ['handling', 'Handling', N, '0'], ['other', 'Other', N, '0'], ['sgst', 'SGST', N, '0'], ['cgst', 'CGST', N, '0'] ] },
 ];
 const REQUIRED = ['gc', 'date', 'from', 'to', 'consignor', 'consignee', 'quantity', 'packageType', 'description'];
@@ -134,7 +135,7 @@ const tableStore = (table, missingMsg, cols = '*') => ({
   },
 });
 const inwardStore = tableStore('inwards', 'The inwards table is missing in Supabase. Run supabase.sql and supabase-branches.sql once.');
-const slipStore = tableStore('delivery_slips', 'The delivery_slips table is missing in Supabase. Run supabase.sql and supabase-branches.sql once.', 'id,branch_id,slip_no,slip_date,gc_numbers,total,created_at');
+const slipStore = tableStore('delivery_slips', 'The delivery_slips table is missing in Supabase. Run supabase.sql and supabase-branches.sql once.', 'id,branch_id,slip_no,slip_date,gc_numbers,delivery_total,total,created_at');
 // numbers are sequential, so the highest of the latest few is the highest of all
 const nextNo = (list, key, prefix) => prefix + String(list.reduce((m, l) => Math.max(m, parseInt(String(l[key] || '').replace(/\D/g, '')) || 0), 0) + 1).padStart(3, '0');
 slipStore.nextNo = async () => nextNo(await getJSON(`delivery_slips?select=slip_no&order=id.desc&limit=50${bq(needBranch())}`), 'slip_no', 'DS');
@@ -547,9 +548,21 @@ function renderInward() {
     const mc = miss ? `<span class="miss">${miss}</span><br><button type="button" class="btn-secondary mini" data-found="${i}">Found</button>` : '<span style="color:var(--muted)">&ndash;</span>';
     return `<tr data-i="${i}" class="${miss ? 'is-missing' : ''}"><td class="adm">${esc(bname(w.branch_id))}</td><td>${esc(dmy(e.entry_date))}</td><td>${esc(e.from_city)}</td><td>${esc(e.to_city)}</td><td>${esc(e.consignor)}</td><td>${esc(e.consignee)}</td>
       <td><select class="pay-sel" data-orig="${esc(pay)}">${PAY.map(p => `<option ${p === pay ? 'selected' : ''}>${p}</option>`).join('')}</select><button type="button" class="btn-primary save-pay hidden">Save</button></td>
+      <td><select class="mode-sel" data-i="${i}"><option value="">Select…</option>${PAY_MODES.map(m => `<option ${m === w.pay_mode ? 'selected' : ''}>${m}</option>`).join('')}</select></td>
       <td>${e.total != null ? fmt(e.total) : ''}</td><td class="rcv">${st}</td><td>${mc}</td></tr>`;
-  }).join('') + moreRow(inMore, 10) : '<tr><td colspan="10">Nothing received yet. Use RECEIVED to add GC numbers.</td></tr>';
+  }).join('') + moreRow(inMore, 11) : '<tr><td colspan="11">Nothing received yet. Use RECEIVED to add GC numbers.</td></tr>';
 }
+// payment mode (Cash / UPI / Cheque) is saved as soon as it is picked
+$('#inRows').addEventListener('change', async e => {
+  const s = e.target.closest('.mode-sel'); if (!s) return;
+  const w = inwards[+s.dataset.i], was = w.pay_mode || ''; s.disabled = true;
+  try {
+    const x = await sbFetch(`inwards?id=eq.${w.id}`, { method: 'PATCH', body: JSON.stringify({ pay_mode: s.value || null }) });
+    if (!x.ok) throw new Error(await x.text());
+    w.pay_mode = s.value || null; showToast(`GC ${w.gc_no}: payment mode ${s.value || 'cleared'}`);
+  } catch (err) { s.value = was; showToast('Save failed: ' + (/pay_mode/.test(err.message) ? 'run supabase-scale/8 in Supabase first.' : err.message), true); }
+  s.disabled = false;
+});
 $('#inRows').addEventListener('change', e => { const s = e.target.closest('.pay-sel'); if (s) s.parentElement.querySelector('.save-pay').classList.toggle('hidden', s.value === s.dataset.orig); });
 $('#inRows').addEventListener('click', async e => {
   const b = e.target.closest('.save-pay'); if (!b) return;
@@ -622,7 +635,7 @@ $('#receivedBtn').addEventListener('click', openReceived);
 async function loadSlips(append) {
   const res = await slipStore.page(append ? slips.length : 0);
   slips = append ? slips.concat(res.rows) : res.rows; slipMore = res.more;
-  $('#slipRows').innerHTML = slips.length ? slips.map((s, i) => `<tr class="row" data-i="${i}"><td class="adm">${esc(bname(s.branch_id))}</td><td>${esc(s.slip_no)}</td><td>${esc(dmy(s.slip_date))}</td><td>${(s.gc_numbers || []).length}</td><td>${fmt(s.total)}</td><td>${new Date(s.created_at).toLocaleString('en-IN')}</td><td>${actions}</td></tr>`).join('') + moreRow(slipMore, 7) : '<tr><td colspan="7">No delivery slips yet. Use Create Delivery slip.</td></tr>';
+  $('#slipRows').innerHTML = slips.length ? slips.map((s, i) => `<tr class="row" data-i="${i}"><td class="adm">${esc(bname(s.branch_id))}</td><td>${esc(s.slip_no)}</td><td>${esc(dmy(s.slip_date))}</td><td>${(s.gc_numbers || []).length}</td><td>${fmt(s.delivery_total ?? s.total)}</td><td><b>${fmt(s.total)}</b></td><td>${new Date(s.created_at).toLocaleString('en-IN')}</td><td>${actions}</td></tr>`).join('') + moreRow(slipMore, 8) : '<tr><td colspan="8">No delivery slips yet. Use Create Delivery slip.</td></tr>';
 }
 // the full slip (all its rows) for the A4 sheet; older slips did not store the parties, so they are read from the GCs
 async function slipDoc(id) {
@@ -653,27 +666,32 @@ async function openCreateSlip() {
   lrBox.innerHTML = '<h3>Create Delivery slip</h3><p class="sub">Loading…</p>'; openModal(true);
   let slipNo;
   try { slipNo = await slipStore.nextNo(); } catch (err) { closeModal(); showToast(slipStore.missing(err.message), true); return; }
-  const rows = []; // { gc, units, door, other }
-  lrBox.innerHTML = `<h3>Create Delivery slip</h3><p class="sub">Slip No. ${esc(slipNo)}. Enter GC numbers; each one is added below with its charges. Total = door delivery &times; units + other.</p>
+  const rows = []; // { gc, units, door, other, gcTotal }
+  lrBox.innerHTML = `<h3>Create Delivery slip</h3><p class="sub">Slip No. ${esc(slipNo)}. Enter GC numbers; each one is added below with its charges. Delivery = door delivery &times; units + other. Total = delivery + the GC's own total.</p>
     <div class="picker"><input type="text" id="slSearch" placeholder="Search GC number, consignor or consignee" autocomplete="off"><div class="dd" id="slDd"></div></div>
-    <div style="overflow-x:auto"><table class="slip-table"><thead><tr><th>GC Number</th><th>Units</th><th>Door Delivery Charge</th><th>Other Charge</th><th>Total</th><th></th></tr></thead><tbody id="slBody"></tbody><tfoot><tr><th colspan="4" style="text-align:right">Grand total</th><th id="slGrand">0.00</th><th></th></tr></tfoot></table></div>
+    <div style="overflow-x:auto"><table class="slip-table"><thead><tr><th>GC Number</th><th>Units</th><th>Door Delivery Charge</th><th>Other Charge</th><th>Delivery</th><th>GC Total</th><th>Total</th><th></th></tr></thead><tbody id="slBody"></tbody><tfoot><tr><th colspan="4" style="text-align:right">Grand total</th><th id="slDel">0.00</th><th id="slGc">0.00</th><th id="slGrand">0.00</th><th></th></tr></tfoot></table></div>
     <div class="modal-actions"><button type="button" class="btn-secondary" id="slCancel">Cancel</button><button type="button" class="btn-primary" id="slCreate">Create slip</button></div>`;
-  const tot = r => (parseFloat(r.door) || 0) * r.units + (parseFloat(r.other) || 0);
-  const sums = () => { rows.forEach((r, i) => { const c = $(`#slBody tr[data-i="${i}"] .t`); if (c) c.textContent = fmt(tot(r)); }); $('#slGrand').textContent = fmt(rows.reduce((a, r) => a + tot(r), 0)); };
+  const del = r => (parseFloat(r.door) || 0) * r.units + (parseFloat(r.other) || 0);
+  const tot = r => del(r) + r.gcTotal;
+  const sum = f => rows.reduce((a, r) => a + f(r), 0);
+  const sums = () => {
+    rows.forEach((r, i) => { const tr = $(`#slBody tr[data-i="${i}"]`); if (tr) { tr.querySelector('.d').textContent = fmt(del(r)); tr.querySelector('.t').textContent = fmt(tot(r)); } });
+    $('#slDel').textContent = fmt(sum(del)); $('#slGc').textContent = fmt(sum(r => r.gcTotal)); $('#slGrand').textContent = fmt(sum(tot));
+  };
   const draw = () => {
-    $('#slBody').innerHTML = rows.length ? rows.map((r, i) => `<tr data-i="${i}"><td><b>${esc(r.gc)}</b></td><td>${r.units}</td><td><input type="number" min="0" step="any" data-k="door" value="${esc(r.door)}" placeholder="0"></td><td><input type="number" min="0" step="any" data-k="other" value="${esc(r.other)}" placeholder="0"></td><td class="t">${fmt(tot(r))}</td><td><button type="button" class="x" data-x="${i}">&times;</button></td></tr>`).join('') : '<tr><td colspan="6" style="color:var(--muted)">No GC numbers added yet.</td></tr>';
+    $('#slBody').innerHTML = rows.length ? rows.map((r, i) => `<tr data-i="${i}"><td><b>${esc(r.gc)}</b></td><td>${r.units}</td><td><input type="number" min="0" step="any" data-k="door" value="${esc(r.door)}" placeholder="0"></td><td><input type="number" min="0" step="any" data-k="other" value="${esc(r.other)}" placeholder="0"></td><td class="d">${fmt(del(r))}</td><td>${fmt(r.gcTotal)}</td><td class="t"><b>${fmt(tot(r))}</b></td><td><button type="button" class="x" data-x="${i}">&times;</button></td></tr>`).join('') : '<tr><td colspan="8" style="color:var(--muted)">No GC numbers added yet.</td></tr>';
     sums();
   };
   gcSearchBox($('#slSearch'), $('#slDd'), async q => (await store.search(branch, q, 60)).filter(e => !rows.some(r => r.gc === String(e.gc_no))),
-    e => { if (rows.some(r => r.gc === String(e.gc_no))) return; rows.push({ gc: String(e.gc_no), units: parseFloat(e.quantity) || 0, door: '', other: '', consignor: e.consignor || '', consignee: e.consignee || '' }); draw(); });
+    e => { if (rows.some(r => r.gc === String(e.gc_no))) return; rows.push({ gc: String(e.gc_no), units: parseFloat(e.quantity) || 0, door: '', other: '', gcTotal: parseFloat(e.total) || 0, consignor: e.consignor || '', consignee: e.consignee || '' }); draw(); });
   $('#slBody').addEventListener('input', ev => { const k = ev.target.dataset.k; if (k) { rows[ev.target.closest('tr').dataset.i][k] = ev.target.value; sums(); } });
   $('#slBody').addEventListener('click', ev => { const x = ev.target.dataset.x; if (x != null) { rows.splice(+x, 1); draw(); } });
   $('#slCancel').onclick = closeModal; draw(); $('#slSearch').focus();
   $('#slCreate').onclick = async () => {
     if (!rows.length) { showToast('Add at least one GC number', true); return; }
     const b = $('#slCreate'); b.disabled = true; b.textContent = 'Creating…';
-    const data = rows.map(r => ({ gc: r.gc, consignor: r.consignor, consignee: r.consignee, units: r.units, door: parseFloat(r.door) || 0, other: parseFloat(r.other) || 0, total: tot(r) }));
-    try { await slipStore.add([{ slip_no: slipNo, slip_date: todayLocal(), gc_numbers: rows.map(r => r.gc), total: data.reduce((a, r) => a + r.total, 0), data }]); showToast('Delivery slip ' + slipNo + ' created'); loadSlips().catch(err => showToast(err.message, true));
+    const data = rows.map(r => ({ gc: r.gc, consignor: r.consignor, consignee: r.consignee, units: r.units, door: parseFloat(r.door) || 0, other: parseFloat(r.other) || 0, delivery: del(r), gcTotal: r.gcTotal, total: tot(r) }));
+    try { await slipStore.add([{ slip_no: slipNo, slip_date: todayLocal(), gc_numbers: rows.map(r => r.gc), delivery_total: sum(del), total: sum(tot), data }]); showToast('Delivery slip ' + slipNo + ' created'); loadSlips().catch(err => showToast(err.message, true));
       const bo = branchOf(branch);
       await showDoc('Delivery slip ' + slipNo + ' created', 'Download, print or close.', slipPagesFn({ slipNo, date: todayLocal(), branchName: bo.name || '', branchAddress: bo.address || '', branchPhone: (bo.delivery_ph || bo.booking_ph || '').trim(), rows: data }), `Delivery-Slip-${slipNo}`); }
     catch (err) { showToast(err.message, true); b.disabled = false; b.textContent = 'Create slip'; }
@@ -793,7 +811,7 @@ const stChip = on => on ? '<span class="chip-st ok">Active</span>' : '<span clas
 
 async function loadBranchesPage() {
   await loadBranches();
-  const x = await sbFetch('accounts?select=*&role=eq.employee&order=name'); if (!x.ok) throw new Error(await x.text());
+  const x = await sbFetch('accounts?select=*&or=(role.eq.employee,shown_in_branch.not.is.null)&order=name'); // employees + admins listed in a branch if (!x.ok) throw new Error(await x.text());
   accts = await x.json(); renderBranches();
 }
 function renderBranches() {
@@ -803,14 +821,14 @@ function renderBranches() {
 }
 function renderBranchList() {
   $('#brBody').innerHTML = `<div class="topbar"><div><h2>Branches</h2><p>Each branch has its own entries, reports, inward and delivery slips. Its employees see only that branch.</p></div><button type="button" class="btn-primary" data-a="addBranch">Add branch</button></div>
-    <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th>Branch</th><th>Booking Ph.</th><th>Delivery Ph.</th><th>Employees</th><th>Status</th><th></th></tr></thead><tbody>${branches.length ? branches.map(b => `<tr class="row" data-b="${b.id}"><td><b>${esc(b.name)}</b></td><td>${esc(b.booking_ph)}</td><td>${esc(b.delivery_ph)}</td><td>${accts.filter(a => a.branch_id === b.id).length}</td><td>${stChip(b.active)}</td><td><button type="button" class="btn-secondary mini" data-a="open">Open</button></td></tr>`).join('') : '<tr><td colspan="6">No branches yet. Use Add branch.</td></tr>'}</tbody></table></div>`;
+    <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th>Branch</th><th>Booking Ph.</th><th>Delivery Ph.</th><th>Employees</th><th>Status</th><th></th></tr></thead><tbody>${branches.length ? branches.map(b => `<tr class="row" data-b="${b.id}"><td><b>${esc(b.name)}</b></td><td>${esc(b.booking_ph)}</td><td>${esc(b.delivery_ph)}</td><td>${accts.filter(a => a.branch_id === b.id || a.shown_in_branch === b.id).length}</td><td>${stChip(b.active)}</td><td><button type="button" class="btn-secondary mini" data-a="open">Open</button></td></tr>`).join('') : '<tr><td colspan="6">No branches yet. Use Add branch.</td></tr>'}</tbody></table></div>`;
 }
 function renderBranchDetail(b) {
-  const emps = accts.filter(a => a.branch_id === b.id);
+  const emps = accts.filter(a => a.branch_id === b.id || a.shown_in_branch === b.id);
   $('#brBody').innerHTML = `<div class="br-head"><div><button type="button" class="btn-ghost mini" data-a="back">&larr; All branches</button><h2 style="margin-top:8px">${esc(b.name)} ${b.active ? '' : '<span class="chip-st off">Off</span>'}</h2><p class="br-meta">${[b.address, b.booking_ph && 'Booking ' + b.booking_ph, b.delivery_ph && 'Delivery ' + b.delivery_ph].filter(Boolean).map(esc).join(' &middot; ') || 'No details added yet'}</p></div>
     <div class="br-actions"><button type="button" class="btn-primary" data-a="viewData">View branch data</button><button type="button" class="btn-secondary" data-a="editBranch">Edit branch</button><button type="button" class="btn-secondary" data-a="toggleBranch">${b.active ? 'Switch off' : 'Switch on'}</button></div></div>
     <div class="br-sec"><h3>Employees (${emps.length})</h3><button type="button" class="btn-primary" data-a="addEmp">Add employee</button></div>
-    <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th>Name</th><th>Phone</th><th>Password</th><th>Status</th><th></th></tr></thead><tbody>${emps.length ? emps.map(a => `<tr data-e="${a.id}"><td><b>${esc(a.name)}</b></td><td>${esc(a.phone)}</td><td>${a.has_password ? '<span class="chip-st ok">Set</span>' : '<span class="chip-st wait">Not set yet</span>'}</td><td>${stChip(a.active)}</td><td><button type="button" class="btn-secondary mini" data-a="editEmp">Edit</button><button type="button" class="btn-secondary mini" data-a="resetEmp">Reset password</button><button type="button" class="btn-secondary mini" data-a="toggleEmp">${a.active ? 'Switch off' : 'Switch on'}</button></td></tr>`).join('') : '<tr><td colspan="5">No employees yet. Use Add employee.</td></tr>'}</tbody></table></div>`;
+    <div class="card dash" style="padding:20px;overflow-x:auto"><table><thead><tr><th>Name</th><th>Phone</th><th>Password</th><th>Status</th><th></th></tr></thead><tbody>${emps.length ? emps.map(a => `<tr data-e="${a.id}"><td><b>${esc(a.name)}</b>${a.role === 'admin' ? ' <span class="chip-st ok">Admin</span>' : ''}</td><td>${esc(a.phone)}</td><td>${a.has_password ? '<span class="chip-st ok">Set</span>' : '<span class="chip-st wait">Not set yet</span>'}</td><td>${stChip(a.active)}</td><td>${a.role === 'admin' ? '' : '<button type="button" class="btn-secondary mini" data-a="editEmp">Edit</button>'}<button type="button" class="btn-secondary mini" data-a="resetEmp">Reset password</button>${a.role === 'admin' ? '' : `<button type="button" class="btn-secondary mini" data-a="toggleEmp">${a.active ? 'Switch off' : 'Switch on'}</button>`}</td></tr>`).join('') : '<tr><td colspan="5">No employees yet. Use Add employee.</td></tr>'}</tbody></table></div>`;
 }
 $('#brBody').addEventListener('click', async e => {
   const btn = e.target.closest('[data-a]'), a = btn && btn.dataset.a, rowB = e.target.closest('tr[data-b]'), rowE = e.target.closest('tr[data-e]');
