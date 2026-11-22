@@ -327,7 +327,7 @@ const waPost = async body => {
   const x = await fetch(waURL(), { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session-token': session.token }, body: JSON.stringify(body) });
   const j = await x.json().catch(() => ({})); if (!x.ok) throw new Error(j.error || 'Request failed'); return j;
 };
-const LOW_BAL = 200; // rupees: below this the box turns red
+const LOW_BAL = 40; // rupees: below this the box turns red
 async function loadWallet() {
   const box = $('#waWallet'); if (!isAdmin()) { box.innerHTML = ''; return; }
   box.innerHTML = '<div class="card wallet"><div><small>WhatsApp (Meta) balance</small><b>Checking…</b></div></div>';
