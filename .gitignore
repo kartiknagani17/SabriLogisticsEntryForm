@@ -1,3 +1,4 @@
 .env
 .env.local.txt
 node_modules
+supabase-admin-phones.sql

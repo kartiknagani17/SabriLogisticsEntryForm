@@ -712,7 +712,7 @@ function lgStage(stage, msg) {
   $('#lgPw').autocomplete = stage === 'set' ? 'new-password' : 'current-password';
   $('#lgPwLabel').textContent = stage === 'set' ? 'Create a password' : 'Password';
   $('#lgTitle').textContent = stage === 'set' ? 'Welcome! Create your password' : 'Sign in';
-  $('#lgSub').textContent = stage === 'id' ? 'Enter your phone number (employees) or email (admin).' : stage === 'set' ? `First sign-in for ${lg.id}. Choose a password (at least 6 characters) to use from now on.` : lg.id;
+  $('#lgSub').textContent = stage === 'id' ? 'Enter your phone number or email.' : stage === 'set' ? `First sign-in for ${lg.id}. Choose a password (at least 6 characters) to use from now on.` : lg.id;
   $('#lgBtn').textContent = stage === 'id' ? 'Continue' : stage === 'set' ? 'Save password & sign in' : 'Sign in';
   $('#lgErr').textContent = msg || '';
   $('#lgPw').value = ''; $('#lgPw2').value = '';
