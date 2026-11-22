@@ -1,10 +1,11 @@
 // Delivery slip as a landscape slip-size sheet (A5 landscape, 210 x 148 mm), viewed / printed / downloaded as PDF.
 const SLIP_W = 842, SLIP_H = 420, SLIP_ROWS = 11;
-const SLIP_COLS = [['Sr.', 30], ['GC No.', 70], ['Consignor', 150], ['Consignee', 150], ['Units', 45], ['Door Del.', 65], ['Other', 60], ['GC Total', 100], ['Amount', 132]];
+const SLIP_COLS = [['Sr.', 30], ['GC No.', 70], ['Consignor', 150], ['Consignee', 150], ['Units', 45], ['Other', 60], ['Delivery Total', 85], ['GC Total', 100], ['Amount', 112]];
 const SLIP_X0 = 20, SLIP_Y0 = 118, SLIP_HEAD = 18, SLIP_ROW = 17;
 
 // slip: { slipNo, date, branchName, branchAddress, branchPhone, rows: [{gc, consignor, consignee, units, door, other, gcTotal, total}] }
-// Amount = door delivery x units + other + the GC's own total
+// Delivery Total = door delivery x units + other; Amount = delivery total + the GC's own total
+const delOf = r => r.delivery != null ? parseFloat(r.delivery) || 0 : (parseFloat(r.door) || 0) * (parseFloat(r.units) || 0) + (parseFloat(r.other) || 0);
 function slipSVG(slip, page = 0, pages = 1, imgs = { logo: 'assets/logo.png' }) {
   const ink = '#000', soft = '#111';
   const text = (x, y, size, str, o = {}) => `<text x="${x}" y="${y}" font-size="${size}" font-weight="${o.b ? 700 : 400}" fill="${o.c || ink}"${o.a ? ` text-anchor="${o.a}"` : ''}${o.ls ? ` letter-spacing="${o.ls}"` : ''}>${esc(str)}</text>`;
@@ -46,7 +47,7 @@ function slipSVG(slip, page = 0, pages = 1, imgs = { logo: 'assets/logo.png' }) 
   (slip.rows || []).slice(page * SLIP_ROWS, (page + 1) * SLIP_ROWS).forEach((r, i) => {
     const yb = SLIP_Y0 + SLIP_HEAD + i * SLIP_ROW + SLIP_ROW / 2 + 3;
     if (i) o += line(SLIP_X0, yb - SLIP_ROW / 2 - 3, SLIP_X0 + W, yb - SLIP_ROW / 2 - 3, 0.3, '1 2');
-    const cells = [page * SLIP_ROWS + i + 1, r.gc, r.consignor, r.consignee, r.units, num(r.door), num(r.other), num(r.gcTotal), num(r.total)];
+    const cells = [page * SLIP_ROWS + i + 1, r.gc, r.consignor, r.consignee, r.units, num(r.other), num(delOf(r)), num(r.gcTotal), num(r.total)];
     cells.forEach((v, c) => {
       if (v === '' || v == null) return;
       const w = SLIP_COLS[c][1] - 6, [s, sz] = lrFit(String(v), w, 8, c === 1 || c === 8);
@@ -62,8 +63,8 @@ function slipSVG(slip, page = 0, pages = 1, imgs = { logo: 'assets/logo.png' }) 
     o += `<rect x="${SLIP_X0}" y="${yT - 11}" width="${W}" height="16" fill="#f1f1f1" stroke="${ink}" stroke-width="0.7"/>`;
     o += text(SLIP_X0 + 6, yT + 1, 8, 'Grand Total', { b: 1 });
     o += text(xs[4] + SLIP_COLS[4][1] / 2, yT + 1, 8, String(sum('units')), { b: 1, a: 'middle' });
-    o += text(xs[5] + SLIP_COLS[5][1] - 4, yT + 1, 8, num(sum('door')), { b: 1, a: 'end' });
-    o += text(xs[6] + SLIP_COLS[6][1] - 4, yT + 1, 8, num(sum('other')), { b: 1, a: 'end' });
+    o += text(xs[5] + SLIP_COLS[5][1] - 4, yT + 1, 8, num(sum('other')), { b: 1, a: 'end' });
+    o += text(xs[6] + SLIP_COLS[6][1] - 4, yT + 1, 8, num(rows.reduce((a, r) => a + delOf(r), 0)), { b: 1, a: 'end' });
     o += text(xs[7] + SLIP_COLS[7][1] - 4, yT + 1, 8, num(sum('gcTotal')), { b: 1, a: 'end' });
     o += text(xs[8] + SLIP_COLS[8][1] - 4, yT + 1, 8.5, 'Rs. ' + num(sum('total')), { b: 1, a: 'end' });
     o += line(40, 398, 240, 398, 0.5) + text(140, 408, 7, "Receiver's Signature", { a: 'middle' });
