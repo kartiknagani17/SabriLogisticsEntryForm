@@ -793,18 +793,28 @@ async function enterApp() {
 // ================= branches + employees (admin) =================
 let accts = [], brOpen = null;
 function formModal(title, sub, fields, onSave, btnText) {
-  lrBox.innerHTML = `<h3>${esc(title)}</h3><p class="sub">${esc(sub)}</p><div class="fields">${fields.map(f => `<div class="field ${f.full ? 'full' : ''}"><label for="fm_${f.k}">${f.label}</label><input id="fm_${f.k}" value="${esc(f.val || '')}" placeholder="${esc(f.ph || '')}" ${f.mode ? `inputmode="${f.mode}"` : ''} autocomplete="off"></div>`).join('')}</div>
+  lrBox.innerHTML = `<h3>${esc(title)}</h3><p class="sub">${esc(sub)}</p><div class="fields">${fields.map(f => `<div class="field ${f.full ? 'full' : ''}"><label for="fm_${f.k}">${f.label}</label><input id="fm_${f.k}" type="${f.type || 'text'}" value="${esc(f.val || '')}" placeholder="${esc(f.ph || '')}" ${f.mode ? `inputmode="${f.mode}"` : ''} autocomplete="${f.type === 'password' ? 'new-password' : 'off'}"></div>`).join('')}</div>
     <div class="modal-actions"><button type="button" class="btn-secondary" id="fmCancel">Cancel</button><button type="button" class="btn-primary" id="fmSave">${btnText || 'Save'}</button></div>`;
   openModal(false); $('#fm_' + fields[0].k).focus();
   $('#fmCancel').onclick = closeModal;
   const go = async () => {
-    const v = {}; fields.forEach(f => { v[f.k] = $('#fm_' + f.k).value.trim(); });
+    const v = {}; fields.forEach(f => { const x = $('#fm_' + f.k).value; v[f.k] = f.type === 'password' ? x : x.trim(); });
     const b = $('#fmSave'); b.disabled = true;
     try { await onSave(v); closeModal(); } catch (err) { showToast(err.message, true); b.disabled = false; }
   };
   $('#fmSave').onclick = go;
   lrBox.querySelectorAll('input').forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') go(); }));
 }
+// ---- passwords: change your own (any signed-in user) / set anyone's (admin). Other devices of that account are signed out; this one stays. ----
+const PW_FIELDS = own => [...(own ? [{ k: 'old', label: 'Current password *', type: 'password', full: true }] : []),
+  { k: 'pw', label: 'New password * (at least 6 characters)', type: 'password', full: true }, { k: 'pw2', label: 'New password again *', type: 'password', full: true }];
+function pwCheck(v) { if (v.pw.length < 6) throw new Error('Password must be at least 6 characters.'); if (v.pw !== v.pw2) throw new Error('The two new passwords do not match.'); }
+async function pwRpc(fn, args) {
+  try { await rpc(fn, args); }
+  catch (e) { throw new Error(/WRONG_PASSWORD/.test(e.message) ? 'Current password is wrong.' : /PASSWORD_SHORT/.test(e.message) ? 'Password must be at least 6 characters.' : isMissing(e.message) ? 'Run supabase-scale/9-change-password.sql in Supabase first.' : e.message); }
+}
+$('#pwBtn').addEventListener('click', () => formModal('Change password', `${session.name} (${session.phone || session.email || ''}). You stay signed in here; every other device is signed out.`, PW_FIELDS(true),
+  async v => { if (!v.old) throw new Error('Enter your current password.'); pwCheck(v); await pwRpc('auth_change_password', { p_old: v.old, p_new: v.pw }); showToast('Password changed'); }, 'Change password'));
 async function writeOk(x, dupMsg) { if (x.ok) return x; const t = await x.text(); if (x.status === 409 || /23505/.test(t)) throw new Error(dupMsg); throw new Error(t); }
 const json = o => JSON.stringify(o);
 const stChip = on => on ? '<span class="chip-st ok">Active</span>' : '<span class="chip-st off">Off</span>';
@@ -855,7 +865,8 @@ $('#brBody').addEventListener('click', async e => {
     if (!emp) return;
     if (a === 'editEmp') return formModal('Edit employee', b.name, [{ k: 'name', label: 'Name *', val: emp.name }, { k: 'phone', label: 'Phone number *', val: emp.phone, mode: 'tel' }],
       async v => { const phone = normPhone(v.phone); if (!v.name) throw new Error('Name is required.'); if (phone.length !== 10) throw new Error('Enter a 10-digit phone number.'); await writeOk(await sbFetch(`accounts?id=eq.${emp.id}`, { method: 'PATCH', body: json({ name: v.name, phone }) }), 'This phone number is already registered.'); await done(); showToast('Employee updated'); });
-    if (a === 'resetEmp') { if (!confirm(`Reset the password of ${emp.name}? They will be asked to create a new one at their next sign-in (within 7 days).`)) return; await rpc('admin_reset_password', { p_account: emp.id }); await done(); return showToast('Password reset'); }
+    if (a === 'resetEmp') return formModal(`New password for ${emp.name}`, `${emp.phone}. The new password works at once; ${emp.id === session.id ? 'your other devices are' : 'every device they are signed in on is'} signed out.`, PW_FIELDS(false),
+      async v => { pwCheck(v); await pwRpc('admin_set_password', { p_account: emp.id, p_new: v.pw }); await done(); showToast(`Password changed for ${emp.name}`); }, 'Set password');
     if (a === 'toggleEmp') { const was = emp.active; await writeOk(await sbFetch(`accounts?id=eq.${emp.id}`, { method: 'PATCH', body: json({ active: !emp.active }) })); await done(); return showToast(was ? 'Employee switched off' : 'Employee switched on'); }
   } catch (err) { showToast(err.message, true); }
 });
