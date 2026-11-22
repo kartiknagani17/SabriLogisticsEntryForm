@@ -213,4 +213,4 @@ grant execute on function public.app_account_id(), public.app_is_admin(), public
   public.auth_me(), public.auth_logout(), public.admin_reset_password(bigint) to anon, authenticated;
 
 -- ---------- the admin account (change the e-mail/name here if needed) ----------
-insert into public.accounts (role, name, email) values ('admin', 'Admin', 'kartiknagani17@gmail.com') on conflict do nothing;
+-- admin accounts sign in by phone; they are created by supabase-admin-phones.sql (kept out of git because it holds the password)

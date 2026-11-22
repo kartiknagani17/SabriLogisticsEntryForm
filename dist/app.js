@@ -696,7 +696,7 @@ document.addEventListener('click', e => { const b = e.target.closest('button'); 
 // ================= sign-in =================
 const SESSION_KEY = 'sl_session';
 const normPhone = p => String(p || '').replace(/\D/g, '').slice(-10);
-const scopeLabel = () => isAdmin() ? (scopeBranch ? bname(scopeBranch) : 'Main Branch') : (session.branch_name || '');
+const scopeLabel = () => isAdmin() ? (scopeBranch ? bname(scopeBranch) : (mainBranch() ? mainBranch().name : 'Main Branch')) : (session.branch_name || '');
 function signOutLocal(msg) {
   session = null; scopeBranch = null; branches = []; entries = []; lrs = []; inwards = []; slips = []; inEntries = new Map(); accRows = [];
   try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
@@ -752,7 +752,7 @@ async function loadBranches() {
 }
 function fillScope() {
   if (!isAdmin()) return;
-  const mb = mainBranch(), opts = '<option value="">Main Branch</option>' + branches.filter(b => (!mb || b.id !== mb.id) && (b.active || b.id === scopeBranch)).map(b => `<option value="${b.id}" ${b.id === scopeBranch ? 'selected' : ''}>${esc(b.name)}</option>`).join('');
+  const mb = mainBranch(), opts = '<option value="">' + esc(mb ? mb.name : 'Main Branch') + '</option>' + branches.filter(b => (!mb || b.id !== mb.id) && (b.active || b.id === scopeBranch)).map(b => `<option value="${b.id}" ${b.id === scopeBranch ? 'selected' : ''}>${esc(b.name)}</option>`).join('');
   document.querySelectorAll('.scopeSel').forEach(s => { s.innerHTML = opts; });
 }
 function updateEntryHint() {
