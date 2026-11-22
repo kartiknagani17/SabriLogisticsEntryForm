@@ -154,17 +154,17 @@ const lrStore = {
 // ---- modal: document viewer with the actions on top ----
 const lrModal = $('#lrModal'), lrBox = $('#lrBox');
 const closeModal = () => lrModal.classList.add('hidden');
-const openModal = wide => { lrBox.classList.toggle('wide', !!wide); lrModal.classList.remove('hidden'); };
+const openModal = (wide, xl) => { lrBox.classList.toggle('wide', !!wide); lrBox.classList.toggle('xl', !!xl); lrModal.classList.remove('hidden'); };
 lrModal.addEventListener('mousedown', e => { if (e.target === lrModal) closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 // pagesFn(inline) -> Promise<string[]> of SVG pages (inline = embed images so it can be rasterised / printed)
-async function showDoc(title, sub, pagesFn, name) {
+async function showDoc(title, sub, pagesFn, name, xl) {
   const pages = await pagesFn(false);
   lrBox.innerHTML = `<div class="modal-top"><div><h3>${esc(title)}</h3><p class="sub">${esc(sub)}${pages.length > 1 ? ` · ${pages.length} pages` : ''}</p></div>
     <div class="modal-btns"><button type="button" class="btn-primary" id="docPdf">Download PDF</button><button type="button" class="btn-secondary" id="docPrint">Print</button><button type="button" class="btn-secondary" id="docClose">Close</button></div></div>
     <div class="pages">${pages.join('')}</div>`;
-  openModal(true);
+  openModal(true, xl);
   $('#docClose').onclick = closeModal;
   $('#docPdf').onclick = async () => { const b = $('#docPdf'); b.disabled = true; b.textContent = 'Preparing…'; try { await svgToPDF(await pagesFn(true), name + '.pdf'); } catch (e) { showToast(e.message, true); } b.disabled = false; b.textContent = 'Download PDF'; };
   $('#docPrint').onclick = async () => svgPrint(await pagesFn(true), name);
@@ -658,7 +658,7 @@ $('#slipRows').addEventListener('click', async e => {
     const d = await slipDoc(s.id);
     if (a === 'pdf') return await svgToPDF(slipPages(d, await inlineImgs()), `Delivery-Slip-${s.slip_no}.pdf`);
     if (a === 'print') return svgPrint(slipPages(d, await inlineImgs()), `Delivery Slip ${s.slip_no}`);
-    await showDoc('Delivery slip ' + s.slip_no, 'Saved delivery slip.', slipPagesFn(d), `Delivery-Slip-${s.slip_no}`);
+    await showDoc('Delivery slip ' + s.slip_no, 'Saved delivery slip.', slipPagesFn(d), `Delivery-Slip-${s.slip_no}`, true);
   } catch (err) { showToast(err.message, true); }
 });
 async function openCreateSlip() {
@@ -693,7 +693,7 @@ async function openCreateSlip() {
     const data = rows.map(r => ({ gc: r.gc, consignor: r.consignor, consignee: r.consignee, units: r.units, door: parseFloat(r.door) || 0, other: parseFloat(r.other) || 0, delivery: del(r), gcTotal: r.gcTotal, total: tot(r) }));
     try { await slipStore.add([{ slip_no: slipNo, slip_date: todayLocal(), gc_numbers: rows.map(r => r.gc), delivery_total: sum(del), total: sum(tot), data }]); showToast('Delivery slip ' + slipNo + ' created'); loadSlips().catch(err => showToast(err.message, true));
       const bo = branchOf(branch);
-      await showDoc('Delivery slip ' + slipNo + ' created', 'Download, print or close.', slipPagesFn({ slipNo, date: todayLocal(), branchName: bo.name || '', branchAddress: bo.address || '', branchPhone: (bo.delivery_ph || bo.booking_ph || '').trim(), rows: data }), `Delivery-Slip-${slipNo}`); }
+      await showDoc('Delivery slip ' + slipNo + ' created', 'Download, print or close.', slipPagesFn({ slipNo, date: todayLocal(), branchName: bo.name || '', branchAddress: bo.address || '', branchPhone: (bo.delivery_ph || bo.booking_ph || '').trim(), rows: data }), `Delivery-Slip-${slipNo}`, true); }
     catch (err) { showToast(err.message, true); b.disabled = false; b.textContent = 'Create slip'; }
   };
 }
