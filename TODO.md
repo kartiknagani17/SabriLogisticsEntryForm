@@ -49,3 +49,9 @@ Login is intentionally blocked for now. To restore it:
 - Point the Login links in `dist/index.html`, `dist/privacy.html`, `dist/terms.html` back to `/app` (they currently go to `/error`).
 - Remove the `/app` and `/app.html` redirects from `vercel.json`.
 - Delete `dist/error.html` if no longer needed.
+
+## TEMPORARY: Whole website down
+The whole site is intentionally down; every page redirects to `/maintenance`. To bring it back:
+- Remove the catch-all redirect (the one whose source starts with `/((?!maintenance`) from `vercel.json`.
+- Delete `dist/maintenance.html`.
+- Then follow "Login disabled" above to restore login.
