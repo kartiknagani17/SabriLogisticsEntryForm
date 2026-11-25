@@ -261,8 +261,11 @@ async function svgToPDF(svgs, filename, asBase64) {
 function svgPrint(svgs, title) {
   svgs = [].concat(svgs);
   const [W, H] = svgSize(svgs[0]), mm = v => (v * 25.4 / 72).toFixed(1) + 'mm';
+  // a delivery slip prints on an A4 portrait sheet, filling only the top half (two slips per sheet)
+  const half = typeof SLIP_W !== 'undefined' && W === SLIP_W && H === SLIP_H;
+  const page = half ? '210mm 297mm' : `${mm(W)} ${mm(H)}`, sw = half ? '210mm' : mm(W), sh = half ? (210 * H / W).toFixed(1) + 'mm' : mm(H);
   const w = window.open('');
-  w.document.write(`<title>${esc(title)}</title><style>@page{size:${mm(W)} ${mm(H)};margin:0}html,body{margin:0}.pg{break-after:page;page-break-after:always}.pg:last-child{break-after:auto;page-break-after:auto}svg{width:${mm(W)};height:${mm(H)};display:block}</style>${svgs.map(x => `<div class="pg">${x}</div>`).join('')}`);
+  w.document.write(`<title>${esc(title)}</title><style>@page{size:${page};margin:0}html,body{margin:0}.pg{break-after:page;page-break-after:always}.pg:last-child{break-after:auto;page-break-after:auto}svg{width:${sw};height:${sh};display:block}</style>${svgs.map(x => `<div class="pg">${x}</div>`).join('')}`);
   w.document.close();
   setTimeout(() => w.print(), 400);
 }
