@@ -3,6 +3,10 @@
   "framework": null,
   "outputDirectory": "dist",
   "cleanUrls": true,
+  "redirects": [
+    { "source": "/app", "destination": "/error", "permanent": false },
+    { "source": "/app.html", "destination": "/error", "permanent": false }
+  ],
   "headers": [
     {
       "source": "/(.*)",
