@@ -57,7 +57,10 @@ const PAN_NO = 'EPIPP7276E', ENRL_NO = '24EPIPP7276E1ZJ';
 const BO_DEFAULT = 'B.O. : Shop No. 07, Khara Kuva, Gandhi Chowk, Veraval -362 265 Dist. Gir-Somnath (Gujarat)';
 // the B.O. header line shows the GC's branch address (falls back to the old fixed address if the branch has none)
 const BO_VAR = ['c', d => d.boAddress ? 'B.O. : ' + d.boAddress.replace(/^B\.O\.\s*:?\s*/i, '') : BO_DEFAULT];
-const varOf = t => t.t.startsWith('B.O. :') ? BO_VAR : VARS[`${t.t}@${t.y}`];
+const EMAIL_DEFAULT = 'sabrilogistics1@gmail.com';
+// the Tel./E-mail header line shows the GC's branch booking + delivery phones, with the company e-mail
+const TEL_VAR = ['c', d => 'Tel.: ' + [d.bkgPh, d.delPh].map(x => (x || '').trim()).filter(Boolean).join(',') + (d.bkgPh || d.delPh ? ',' : '') + 'E-mail :' + EMAIL_DEFAULT];
+const varOf = t => t.t.startsWith('B.O. :') ? BO_VAR : t.t.startsWith('Tel.:') ? TEL_VAR : VARS[`${t.t}@${t.y}`];
 const BANK = { name: 'HDFC Bank', account: '50200119470541', ifsc: 'HDFC0000230' };
 const COPIES = ['CONSIGNOR COPY', 'CONSIGNEE COPY', 'DRIVER COPY'];
 const FONT = "Arial,'Liberation Sans',Helvetica,sans-serif";
@@ -114,7 +117,7 @@ function copySVG(d, label, imgs) {
     }
     // variable text: lay the glyphs out with the original's average advance, anchored like the original
     const a = t.t.trim() === 'CONSIGNOR COPY' ? 'c' : varOf(t)[0];
-    const k = t.t.startsWith('B.O. :') ? Math.min(1, 560 / runWidth(txt, t.s, t.b)) : 1; // long branch addresses shrink to fit the page
+    const k = (t.t.startsWith('B.O. :') || t.t.startsWith('Tel.:')) ? Math.min(1, 560 / runWidth(txt, t.s, t.b)) : 1; // long branch addresses shrink to fit the page
     const sz = t.s * k, attrs2 = k < 1 ? attrs.replace(/font-size="[^"]*"/, `font-size="${(fs * k).toFixed(3)}"`) : attrs;
     const W = runWidth(txt, sz, t.b);
     let ax = a === 'c' ? (t.x0 + t.x1) / 2 : a === 'r' ? t.x1 : t.x0;
