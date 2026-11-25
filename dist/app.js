@@ -249,7 +249,7 @@ function show(v) {
 $('#navNew').addEventListener('click', () => show('new'));
 let entries = [], lrs = [], inwards = [], slips = [], tab = 'entries';
 let entTotal = 0, lrMore = false, inMore = false, slipMore = false;
-const actions = `<button type="button" class="btn-secondary mini" data-a="view">View</button> <button type="button" class="btn-secondary mini" data-a="pdf">PDF</button> <button type="button" class="btn-secondary mini" data-a="print">Print</button>`;
+const actions = `<button type="button" class="btn-secondary mini" data-a="view">View</button> <button type="button" class="btn-secondary mini" data-a="pdf">PDF</button> <button type="button" class="btn-secondary mini" data-a="print">Print</button> <button type="button" class="btn-secondary mini adm del-rec" data-a="del">Delete</button>`;
 const moreRow = (more, cols) => more ? `<tr class="more-row"><td colspan="${cols}"><button type="button" class="btn-secondary mini" data-more="1">Show more</button></td></tr>` : '';
 // a later request replaces an earlier one still on its way (fast typing in the search box)
 let entSeq = 0;
@@ -405,8 +405,20 @@ const moreBtn = (sel, load) => $(sel).addEventListener('click', async e => {
   try { await load(true); } catch (err) { showToast(err.message, true); b.disabled = false; b.textContent = 'Show more'; }
 });
 moreBtn('#rows', loadEntries); moreBtn('#lrRows', loadLRs); moreBtn('#inRows', p => loadInward(p)); moreBtn('#slipRows', p => loadSlips(p));
+// admin-only permanent delete of one saved row (the database enforces admin-only too)
+async function deleteRow(table, id, what, after) {
+  if (!isAdmin()) return showToast('Only an admin can delete.', true);
+  if (!confirm(`Delete ${what}? This cannot be undone.`)) return;
+  try {
+    const x = await sbFetch(`${table}?id=eq.${id}`, { method: 'DELETE', headers: { Prefer: 'return=representation' } });
+    if (!x.ok) throw new Error(await x.text());
+    if (!(await x.json()).length) throw new Error('Could not delete it. Run supabase-scale/10 in Supabase first.');
+    showToast(`${what} deleted`); await after();
+  } catch (err) { showToast('Delete failed: ' + err.message, true); }
+}
 $('#rows').addEventListener('click', async e => {
   const tr = e.target.closest('tr.row'); if (!tr) return; const row = viewList[tr.dataset.i], a = e.target.dataset.a;
+  if (a === 'del') return deleteRow('entries', row.id, 'GC ' + row.gc_no, loadEntries);
   // the list holds only its columns: the full GC is read now, for this one entry
   let d; try { d = await store.full(row.id); } catch (err) { return showToast(err.message, true); }
   if (a === 'pdf') return receiptPDF(rd(d, row.branch_id), `GC-${row.gc_no}.pdf`);
@@ -501,6 +513,7 @@ async function openCreateLR() {
 $('#newLRBtn').addEventListener('click', openCreateLR);
 $('#lrRows').addEventListener('click', async e => {
   const tr = e.target.closest('tr.row'); if (!tr) return; const l = lrs[tr.dataset.i], a = e.target.dataset.a;
+  if (a === 'del') return deleteRow('lrs', l.id, 'LR ' + l.memo_no, loadLRs);
   try {
     const d = await lrStore.full(l.id);
     if (a === 'pdf') return await svgToPDF(lrPages(await liveLR(d, l.branch_id), await inlineImgs()), `LR-${l.memo_no}.pdf`);
@@ -549,8 +562,8 @@ function renderInward() {
     return `<tr data-i="${i}" class="${miss ? 'is-missing' : ''}"><td class="adm">${esc(bname(w.branch_id))}</td><td>${esc(dmy(e.entry_date))}</td><td>${esc(e.from_city)}</td><td>${esc(e.to_city)}</td><td>${esc(e.consignor)}</td><td>${esc(e.consignee)}</td>
       <td><select class="pay-sel" data-orig="${esc(pay)}">${PAY.map(p => `<option ${p === pay ? 'selected' : ''}>${p}</option>`).join('')}</select><button type="button" class="btn-primary save-pay hidden">Save</button></td>
       <td><select class="mode-sel" data-i="${i}"><option value="">Select…</option>${PAY_MODES.map(m => `<option ${m === w.pay_mode ? 'selected' : ''}>${m}</option>`).join('')}</select></td>
-      <td>${e.total != null ? fmt(e.total) : ''}</td><td class="rcv">${st}</td><td>${mc}</td></tr>`;
-  }).join('') + moreRow(inMore, 11) : '<tr><td colspan="11">Nothing received yet. Use RECEIVED to add GC numbers.</td></tr>';
+      <td>${e.total != null ? fmt(e.total) : ''}</td><td class="rcv">${st}</td><td>${mc}</td><td class="adm"><button type="button" class="btn-secondary mini del-rec" data-del="${i}">Delete</button></td></tr>`;
+  }).join('') + moreRow(inMore, 12) : '<tr><td colspan="12">Nothing received yet. Use RECEIVED to add GC numbers.</td></tr>';
 }
 // payment mode (Cash / UPI / Cheque) is saved as soon as it is picked
 $('#inRows').addEventListener('change', async e => {
@@ -572,6 +585,10 @@ $('#inRows').addEventListener('click', async e => {
   try { await store.setPayType(ent, sel.value); sel.dataset.orig = sel.value; b.classList.add('hidden'); showToast('Pay type updated everywhere'); }
   catch (err) { showToast('Save failed: ' + err.message, true); }
   b.disabled = false; b.textContent = 'Save';
+});
+$('#inRows').addEventListener('click', e => {
+  const b = e.target.closest('[data-del]'); if (!b) return; const w = inwards[+b.dataset.del];
+  deleteRow('inwards', w.id, 'the received record of GC ' + w.gc_no, loadInward);
 });
 $('#inRows').addEventListener('click', async e => {
   const b = e.target.closest('[data-found]'); if (!b) return;
@@ -654,6 +671,7 @@ async function slipDoc(id) {
 const slipPagesFn = slip => async inline => slipPages(slip, inline ? await inlineImgs() : undefined);
 $('#slipRows').addEventListener('click', async e => {
   const tr = e.target.closest('tr.row'); if (!tr) return; const s = slips[tr.dataset.i], a = e.target.dataset.a;
+  if (a === 'del') return deleteRow('delivery_slips', s.id, 'Delivery slip ' + s.slip_no, loadSlips);
   try {
     const d = await slipDoc(s.id);
     if (a === 'pdf') return await svgToPDF(slipPages(d, await inlineImgs()), `Delivery-Slip-${s.slip_no}.pdf`);
