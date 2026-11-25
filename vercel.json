@@ -5,7 +5,8 @@
   "cleanUrls": true,
   "redirects": [
     { "source": "/app", "destination": "/error", "permanent": false },
-    { "source": "/app.html", "destination": "/error", "permanent": false }
+    { "source": "/app.html", "destination": "/error", "permanent": false },
+    { "source": "/((?!maintenance|assets/|site\\.css).*)", "destination": "/maintenance", "permanent": false }
   ],
   "headers": [
     {
