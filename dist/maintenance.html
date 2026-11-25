@@ -4,22 +4,26 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Temporarily unavailable · Sabri Logistics</title>
+  <title>Error 503 · Sabri Logistics</title>
   <meta name="robots" content="noindex">
   <link rel="icon" href="assets/logo.png">
   <link rel="stylesheet" href="site.css?v=20261121b">
   <style>
     .err{min-height:80vh;display:grid;place-items:center;text-align:center;padding:40px 20px}
     .err img{margin-bottom:18px}
-    .err h1{margin:0 0 10px;font-size:clamp(24px,3.6vw,34px);color:var(--navy)}
+    .err .code{font-size:clamp(72px,16vw,140px);font-weight:800;color:var(--navy);line-height:1;margin:0}
+    .err h1{margin:10px 0 8px;font-size:clamp(22px,3.4vw,30px)}
     .err p{color:var(--muted);max-width:480px;margin:0 auto;font-size:17px}
+    .err .ref{font-size:13px;margin-top:18px}
   </style>
 </head>
 <body>
   <main class="err"><div>
     <img src="assets/logo.png" alt="Sabri Logistics logo" width="102" height="66">
-    <h1>We'll be back soon</h1>
-    <p>Our website is temporarily unavailable. Please check back later.</p>
+    <p class="code">503</p>
+    <h1>Service Unavailable</h1>
+    <p>Something went wrong on our server and this page could not be loaded. Please try again later.</p>
+    <p class="ref">Error code: SERVICE_UNAVAILABLE</p>
   </div></main>
 </body>
 </html>
