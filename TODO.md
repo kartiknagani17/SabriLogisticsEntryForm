@@ -43,3 +43,9 @@ the first top-up. Meta has no balance API, so record each top-up you make in Wha
 
 The site is hosted on Vercel from this repository (`vercel.json`: serves `dist`, adds security headers). Every push to
 `main` deploys. `/` is the public business website (index, privacy, terms); the staff dashboard is at `/app`. Database changes are in `supabase-scale/` (step 5 = missing GCs, login hardening, wallet; already run).
+
+## TEMPORARY: Login disabled
+Login is intentionally blocked for now. To restore it:
+- Point the Login links in `dist/index.html`, `dist/privacy.html`, `dist/terms.html` back to `/app` (they currently go to `/error`).
+- Remove the `/app` and `/app.html` redirects from `vercel.json`.
+- Delete `dist/error.html` if no longer needed.

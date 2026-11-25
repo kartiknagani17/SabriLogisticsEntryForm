@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<!-- TEMPORARY: Login is intentionally disabled. All Login links point here and /app redirects here (see vercel.json). To restore: point Login links back to /app and remove the redirects from vercel.json. -->
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Error 503 · Sabri Logistics</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="assets/logo.png">
+  <link rel="stylesheet" href="site.css?v=20261121b">
+  <style>
+    .err{min-height:70vh;display:grid;place-items:center;text-align:center;padding:40px 20px}
+    .err .code{font-size:clamp(72px,16vw,140px);font-weight:800;color:var(--navy);line-height:1;margin:0}
+    .err h1{margin:10px 0 8px;font-size:clamp(22px,3.4vw,30px)}
+    .err p{color:var(--muted);max-width:460px;margin:0 auto 22px;font-size:17px}
+    .err .ref{font-size:13px;margin-top:18px}
+  </style>
+</head>
+<body>
+  <header class="top"><div class="wrap">
+    <a class="logo" href="/"><img src="assets/logo.png" alt="Sabri Logistics logo" width="68" height="44"><b>SABRI LOGISTICS</b></a>
+  </div></header>
+  <main class="err"><div>
+    <p class="code">503</p>
+    <h1>Login is currently unavailable</h1>
+    <p>Something went wrong while loading the login page. Please try again later.</p>
+    <a class="btn" href="/">Back to home</a>
+    <p class="ref">Error code: LOGIN_SERVICE_UNAVAILABLE</p>
+  </div></main>
+</body>
+</html>
